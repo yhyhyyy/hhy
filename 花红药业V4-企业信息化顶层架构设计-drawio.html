@@ -1,0 +1,1365 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>花红药业 — 企业信息化顶层架构设计 | 可视化编辑版</title>
+<script>
+// Dynamic Mermaid loader with CDN fallback
+(function loadMermaid() {
+  var CDNS = [
+    'https://cdn.jsdelivr.net/npm/mermaid@10.9.1/dist/mermaid.min.js',
+    'https://unpkg.com/mermaid@10.9.1/dist/mermaid.min.js',
+    'https://cdnjs.cloudflare.com/ajax/libs/mermaid/10.9.1/mermaid.min.js'
+  ];
+  var idx = 0;
+  function tryNext() {
+    if (idx >= CDNS.length) {
+      document.addEventListener('DOMContentLoaded', function() {
+        var el = document.getElementById('svgContainer');
+        if (el) el.innerHTML = '<div style="text-align:center;color:#f87171;padding:40px;"><div style="font-size:2rem;margin-bottom:12px;">⚠️</div><div style="font-size:.9rem;">Mermaid.js 加载失败</div><div style="color:#94a3b8;font-size:.78rem;margin-top:8px;">所有 CDN 均不可用，请检查网络连接</div></div>';
+        var b = document.getElementById('statusBadge');
+        if (b) b.textContent = 'v5.0 | CDN 不可用';
+      });
+      return;
+    }
+    var s = document.createElement('script');
+    s.src = CDNS[idx];
+    s.onload = function() { console.log('Mermaid loaded from: ' + CDNS[idx]); };
+    s.onerror = function() { idx++; tryNext(); };
+    document.head.appendChild(s);
+  }
+  tryNext();
+})();
+</script>
+<style>
+  :root {
+    --bg: #0f172a; --panel: #1e293b; --border: #334155; --text: #e2e8f0;
+    --accent: #38bdf8; --btn-bg: #2563eb; --btn-hover: #1d4ed8;
+    --success: #16a34a; --warn: #d97706;
+  }
+  *{margin:0;padding:0;box-sizing:border-box}
+  body{
+    background:var(--bg);color:var(--text);
+    font-family:'Segoe UI','PingFang SC','Microsoft YaHei',sans-serif;
+    min-height:100vh;display:flex;flex-direction:column;
+  }
+  .header{
+    background:linear-gradient(135deg,#1a237e 0%,#0d47a1 40%,#004d40 100%);
+    padding:14px 28px;display:flex;align-items:center;justify-content:space-between;
+    border-bottom:2px solid var(--border);flex-shrink:0;
+  }
+  .header .title{font-size:1.25rem;font-weight:700;letter-spacing:.5px}
+  .header .title span{color:var(--accent)}
+  .header .actions{display:flex;gap:8px;flex-wrap:wrap;align-items:center}
+  .header .actions button{
+    padding:7px 16px;border-radius:8px;border:1px solid rgba(255,255,255,.2);
+    background:rgba(255,255,255,.08);color:#fff;cursor:pointer;
+    font-size:.8rem;transition:.2s;font-family:inherit
+  }
+  .header .actions button:hover{background:rgba(255,255,255,.18)}
+  .header .actions .btn-edit{background:var(--btn-bg);border-color:var(--btn-bg)}
+  .header .actions .btn-edit:hover{background:var(--btn-hover)}
+  .header .actions .btn-dl{background:var(--success);border-color:var(--success)}
+  .header .actions .btn-reset{background:var(--warn);border-color:var(--warn)}
+  .header .badge{
+    background:rgba(255,255,255,.12);padding:5px 12px;
+    border-radius:20px;font-size:.78rem;letter-spacing:1px
+  }
+  .main{display:flex;flex:1;overflow:hidden}
+  .sidebar{
+    width:250px;background:var(--panel);border-right:1px solid var(--border);
+    padding:10px 0;overflow-y:auto;flex-shrink:0
+  }
+  .sidebar .sec-title{
+    font-size:.68rem;text-transform:uppercase;letter-spacing:2px;
+    padding:6px 18px 3px;color:#94a3b8;margin-top:6px
+  }
+  .sidebar .tab{
+    display:block;width:100%;padding:9px 18px;background:transparent;
+    border:none;color:#cbd5e1;text-align:left;font-size:.85rem;
+    cursor:pointer;transition:.12s;border-left:3px solid transparent;font-family:inherit
+  }
+  .sidebar .tab:hover{background:#334155;color:#fff}
+  .sidebar .tab.active{
+    background:#1e3a5f;color:#fff;border-left-color:var(--accent);font-weight:600
+  }
+  .sidebar .tab .emoji{margin-right:5px}
+  .content{flex:1;display:flex;flex-direction:column;overflow:hidden;position:relative}
+  .diagram-panel{
+    flex:1;position:relative;overflow:hidden;background:#f1f5f9
+  }
+  .diagram-panel.editing{background:#fefce8}
+  #svgContainer{
+    width:100%;height:100%;overflow:auto;display:flex;align-items:center;justify-content:center;
+  }
+  #svgContainer svg{display:block}
+  /* Drag hints */
+  #svgContainer.editing .node:hover{outline:3px dashed #f59e0b;outline-offset:2px;cursor:grab}
+  #svgContainer.editing .node:active{cursor:grabbing}
+  /* Text edit overlay */
+  .text-editor{
+    position:absolute;z-index:30;min-width:120px;min-height:40px;
+    background:#fff;border:2px solid #2563eb;border-radius:6px;
+    padding:6px 10px;font-size:13px;outline:none;
+    box-shadow:0 4px 16px rgba(0,0,0,.2);font-family:inherit
+  }
+  .zoom-controls{
+    position:absolute;bottom:20px;right:20px;display:flex;
+    flex-direction:column;gap:4px;z-index:10
+  }
+  .zoom-controls button{
+    width:38px;height:38px;border-radius:8px;border:1px solid #cbd5e1;
+    background:#fff;color:#334155;font-size:1.1rem;cursor:pointer;
+    transition:.15s;display:flex;align-items:center;justify-content:center;
+    box-shadow:0 2px 8px rgba(0,0,0,.1)
+  }
+  .zoom-controls button:hover{background:#f1f5f9;border-color:#94a3b8}
+  .zoom-controls .zoom-label{
+    text-align:center;font-size:.72rem;color:#64748b;background:#fff;
+    border-radius:6px;padding:4px 6px;font-weight:600;box-shadow:0 2px 8px rgba(0,0,0,.08)
+  }
+  .toast{
+    position:fixed;bottom:24px;left:50%;transform:translateX(-50%);
+    background:#1e293b;color:#e2e8f0;padding:10px 24px;
+    border-radius:8px;font-size:.82rem;z-index:100;
+    border:1px solid var(--border);box-shadow:0 4px 16px rgba(0,0,0,.4);
+    opacity:0;transition:opacity .3s;pointer-events:none
+  }
+  .toast.show{opacity:1}
+  ::-webkit-scrollbar{width:5px}
+  ::-webkit-scrollbar-track{background:transparent}
+  ::-webkit-scrollbar-thumb{background:#475569;border-radius:3px}
+  @media(max-width:900px){
+    .main{flex-direction:column}
+    .sidebar{width:100%;max-height:180px;display:flex;flex-wrap:wrap;overflow-x:auto;padding:6px}
+    .sidebar .sec-title{display:none}
+    .sidebar .tab{flex-shrink:0;border-left:none;border-bottom:3px solid transparent;font-size:.75rem;padding:7px 10px}
+    .sidebar .tab.active{border-left:none;border-bottom-color:var(--accent)}
+    .zoom-controls{bottom:10px;right:10px}
+    .zoom-controls button{width:32px;height:32px;font-size:.9rem}
+  }
+  @media print{
+    .sidebar,.header .actions,.zoom-controls{display:none!important}
+    .diagram-panel{overflow:visible!important;background:#fff!important}
+    #svgContainer.editing .node:hover{outline:none!important}
+  }
+</style>
+</head>
+<body>
+
+<div class="header">
+  <div>
+    <div class="title">花红药业 — <span>企业信息化顶层架构设计</span></div>
+    <div style="font-size:.73rem;color:#94a3b8;margin-top:3px">ERP核心枢纽 · CRM客户关系 · SRM供应商关系 · MOM制造运营 | 拖拽编辑 · 双击改文字</div>
+  </div>
+  <div class="actions">
+    <button class="btn-edit" id="btnEdit" onclick="toggleEdit()">✏️ 编辑模式</button>
+    <button class="btn-dl" onclick="downloadDrawio()">📥 下载.drawio</button>
+    <button onclick="downloadSVG()">🖼️ 下载SVG</button>
+    <button onclick="printDiagram()">🖨️ 打印</button>
+    <button class="btn-reset" onclick="resetDiagram()">↺ 重置</button>
+    <span class="badge" id="statusBadge">v5.0 | 初始化...</span>
+  </div>
+</div>
+
+<div class="main">
+  <nav class="sidebar">
+    <div class="sec-title">📐 总体架构</div>
+    <button class="tab active" data-diagram="d0" onclick="switchDiagram(this)">
+      <span class="emoji">🏗️</span> 总体架构全景图
+    </button>
+    <div class="sec-title">🔗 核心主链路</div>
+    <button class="tab" data-diagram="d1" onclick="switchDiagram(this)">
+      <span class="emoji">📋</span> 计划与采购管理
+    </button>
+    <button class="tab" data-diagram="d2" onclick="switchDiagram(this)">
+      <span class="emoji">📦</span> 仓储与物料管理
+    </button>
+    <button class="tab" data-diagram="d3" onclick="switchDiagram(this)">
+      <span class="emoji">🏭</span> 生产制造全流程
+    </button>
+    <button class="tab" data-diagram="d4" onclick="switchDiagram(this)">
+      <span class="emoji">🔬</span> 质量检验与放行
+    </button>
+    <button class="tab" data-diagram="d5" onclick="switchDiagram(this)">
+      <span class="emoji">🚚</span> 销售物流与追溯
+    </button>
+    <div class="sec-title">🛡️ 支撑保障</div>
+    <button class="tab" data-diagram="d6" onclick="switchDiagram(this)">
+      <span class="emoji">🔧</span> 支撑保障体系
+    </button>
+    <div class="sec-title">🔀 数据集成</div>
+    <button class="tab" data-diagram="d7" onclick="switchDiagram(this)">
+      <span class="emoji">🌐</span> 系统数据流与集成
+    </button>
+  </nav>
+
+  <div class="content">
+    <div class="diagram-panel" id="diagramPanel">
+      <div id="svgContainer"><div style="color:#64748b;font-size:.9rem;">正在初始化...</div></div>
+      <div class="zoom-controls" id="zoomControls">
+        <button onclick="zoomSVG(1.15)" title="放大">＋</button>
+        <span class="zoom-label" id="zoomLabel">100%</span>
+        <button onclick="zoomSVG(0.87)" title="缩小">−</button>
+        <button onclick="zoomSVG('fit')" title="适应窗口">⊡</button>
+        <button onclick="zoomSVG('reset')" title="重置缩放">↺</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="toast" id="toast"></div>
+
+<script>
+/* ═══════════════════════════════════════════════════
+   DIAGRAM SOURCES
+   ═══════════════════════════════════════════════════ */
+const diagramSources = {
+  d0: `flowchart LR
+    subgraph MAIN["花红药业 — 企业信息化顶层架构"]
+        direction TB
+        subgraph SRM["🔗 SRM 供应商关系管理 — 计划与采购管理链路"]
+            direction LR
+            SRM1["① 需求计划制定<br/>销售预测·库存·产能<br/>→ MPS/MRP/采购申请"]
+            SRM2["② 供应商准入审计<br/>资质·GMP证书·产地<br/>→ 合格名录·分级"]
+            SRM3["③ 采购下单协同<br/>MRP·价格库·合同<br/>→ 采购订单PO"]
+            SRM4["④ 到货接收初验<br/>PO·送货单·COA<br/>→ 到货单·初验记录"]
+            SRM1 --> SRM2 --> SRM3 --> SRM4
+        end
+        ERP["🏭 ERP 企业资源计划系统<br/>━━━━━━━━━━━━━━━━━━━━<br/>📊 财务总账 · 💰 成本核算 · 🧾 应收应付<br/>📋 主数据管理MDM · 🗓️ 生产计划排产MPS/MRP<br/>📦 库存管理 · 👥 人力资源管理<br/>📈 商业智能BI · 📑 文档管理DMS<br/>━━━━━━━━━━━━━━━━━━━━<br/>⬤ 企业资源计划核心枢纽 ⬤"]
+        subgraph CRM["🤝 CRM 客户关系管理 — 销售物流追溯链路"]
+            direction LR
+            CRM1["① 销售订单发货计划<br/>经销商订单·成品放行<br/>→ 发货单·出库指令"]
+            CRM2["② 成品出库复核<br/>发货单·三期扫码<br/>→ 出库单·批次关联"]
+            CRM3["③ 冷链常温运输<br/>温控标准·GPS<br/>→ 运输记录·签收单"]
+            CRM4["④ 追溯与召回管理<br/>全链路批次·不良反馈<br/>→ 召回预案·监管上报"]
+            CRM1 --> CRM2 --> CRM3 --> CRM4
+        end
+        subgraph MOM["⚙️ MOM 制造运营管理 — 生产·仓储·质量·保障"]
+            direction TB
+            subgraph MOM_WMS["📦 WMS 仓储管理"]
+                direction LR
+                W1["入库验收IQC"] --> W2["智能养护"] --> W3["出库备料"] --> W4["成品入库"]
+            end
+            subgraph MOM_MES["🏭 MES 制造执行"]
+                direction LR
+                MM1["工单排产"] --> MM2["前处理炮制"] --> MM3["提取浓缩"] --> MM4["制剂成型"] --> MM5["内包外包"]
+            end
+            subgraph MOM_QL["🔬 QMS+LIMS 质量管理"]
+                direction LR
+                QL1["取样管理"] --> QL2["检验检测"] --> QL3["偏差CAPA"] --> QL4["成品放行QA"]
+            end
+            subgraph MOM_SP["🔧 支撑保障"]
+                direction LR
+                SP1["EAM设备"] ; SP2["EMS环境"] ; SP3["HR人员"] ; SP4["验证合规"]
+            end
+        end
+        GMP["🏛️ GMP合规监管<br/>药监数据上报·审计追踪<br/>数据完整性ALCOA+"]
+        SCADA["📡 SCADA数据采集<br/>设备参数·环境实时数据"]
+        TMS["🚚 TMS运输管理<br/>GPS·温控·签收"]
+        SRM ==>|"MRP·采购申请·PO"| ERP
+        ERP ==>|"生产计划·工单·物料需求"| MOM
+        ERP ==>|"成品库存·销售订单·客户"| CRM
+        SRM -.->|"到货初验→入库触发"| MOM
+        MOM -.->|"放行单→可售库存→发货"| CRM
+        CRM -.->|"发货指令→出库确认"| MOM
+        MOM -.-> SCADA
+        CRM -.-> TMS
+        TMS -.-> CRM
+        SCADA -.-> GMP
+        MOM -.-> GMP
+        CRM -.-> GMP
+        SRM -.-> GMP
+    end
+    subgraph LEGEND["📋 图例"]
+        direction TB
+        L_ERP[" ERP 核心枢纽 "]
+        L_SRM[" SRM 供应商关系管理 "]
+        L_CRM[" CRM 客户关系管理 "]
+        L_MOM[" MOM 制造运营管理 "]
+        L_SUPP[" 支撑保障体系 "]
+        L_EXT[" 外部系统 "]
+    end
+    MAIN ~~~ LEGEND
+    classDef erpCore fill:#1a237e,stroke:#ffd600,color:#fff,stroke-width:3px
+    classDef srmBlock fill:#c62828,stroke:#ffab91,color:#fff
+    classDef crmBlock fill:#00695c,stroke:#80cbc4,color:#fff
+    classDef momBlock fill:#e65100,stroke:#ffcc80,color:#fff
+    classDef wmsNode fill:#bf360c,stroke:#ffab91,color:#fff
+    classDef mesNode fill:#f57f17,stroke:#ffe082,color:#1e293b
+    classDef qmsNode fill:#2e7d32,stroke:#a5d6a7,color:#fff
+    classDef suppNode fill:#6a1b9a,stroke:#ce93d8,color:#fff
+    classDef extNode fill:#37474f,stroke:#90a4ae,color:#fff,stroke-dasharray:5
+    class ERP erpCore
+    class SRM1,SRM2,SRM3,SRM4 srmBlock
+    class CRM1,CRM2,CRM3,CRM4 crmBlock
+    class W1,W2,W3,W4 wmsNode
+    class MM1,MM2,MM3,MM4,MM5 mesNode
+    class QL1,QL2,QL3,QL4 qmsNode
+    class SP1,SP2,SP3,SP4 suppNode
+    class GMP,SCADA,TMS extNode
+    class L_ERP erpCore
+    class L_SRM srmBlock
+    class L_CRM crmBlock
+    class L_MOM momBlock
+    class L_SUPP suppNode
+    class L_EXT extNode
+`,
+  d1: `flowchart TB
+    classDef srm fill:#c62828,stroke:#ffab91,color:#fff
+    classDef erp fill:#1a237e,stroke:#ffd600,color:#fff
+    classDef wms fill:#bf360c,stroke:#ffab91,color:#fff
+    subgraph PLANNING["📊 ERP — 需求计划与排产"]
+        N1["节点1: 销售需求&生产计划制定<br/>━━━━━━━━━━━━━━━━━━<br/>📥 必要输入条件:<br/>①历史销售数据/市场订单/经销商要货计划<br/>②成品库存/在制工单/安全库存标准<br/>③产能/设备负荷/交期/GMP生产周期<br/>━━━━━━━━━━━━━━━━━━<br/>📤 输出: 年度/月度/周主计划·MRP·采购申请<br/>🤖 智能化: 智能排产·库存预警·需求预测算法·MRP自动运算<br/>✅ 合规: 计划符合GMP周期·变更留痕·BOM一致"]
+    end
+    subgraph SRM_BLOCK["🔗 SRM — 供应商全生命周期管理"]
+        N2["节点2: 供应商准入&审计<br/>━━━━━━━━━━━━━━━━━━<br/>📥 必要输入条件:<br/>①营业执照/生产许可证/GMP证书/检验报告<br/>②原辅料标准/产地标准/质量风险评估<br/>━━━━━━━━━━━━━━━━━━<br/>📤 输出: 合格供应商名录·准入审批单·供应商分级<br/>🤖 智能化: 资质自动校验·审计流程线上化·分级自动评分·到期预警<br/>✅ 合规: 供应商资质合规·审计记录完整·道地药材产地可追溯"]
+        N3["节点3: 原辅料/包材采购下单<br/>━━━━━━━━━━━━━━━━━━<br/>📥 必要输入条件:<br/>①MRP物料需求计划/采购申请审批完成<br/>②合格供应商/采购价格/合同条款<br/>━━━━━━━━━━━━━━━━━━<br/>📤 输出: 采购订单PO·到货计划<br/>🤖 智能化: 订单自动生成·价格自动校验·交期预警·合同线上审批<br/>✅ 合规: 采购订单与审批一致·合同合规·来源合格供应商"]
+        N4["节点4: 到货接收与初验<br/>━━━━━━━━━━━━━━━━━━<br/>📥 必要输入条件:<br/>①采购订单/送货单/供应商出厂检验报告<br/>━━━━━━━━━━━━━━━━━━<br/>📤 输出: 到货单·初验记录·不合格拒收<br/>🤖 智能化: 到货单与PO自动匹配·标签扫码校验·不合格自动隔离<br/>✅ 合规: 到货记录完整·初验合规·不合格品处理留痕"]
+    end
+    subgraph NEXT["➡️ 下一环节"]
+        WMS_TRIG["📦 触发 WMS 入库验收IQC"]
+    end
+    N1 --> N2 --> N3 --> N4 --> WMS_TRIG
+    class N1 erp
+    class N2,N3,N4 srm
+    class WMS_TRIG wms
+    N1 -.->|"MRP数据"| N3
+    N2 -.->|"合格供应商名录"| N3
+`,
+  d2: `flowchart TB
+    classDef wms fill:#bf360c,stroke:#ffab91,color:#fff
+    classDef ext fill:#37474f,stroke:#90a4ae,color:#fff
+    subgraph WMS_FLOW["📦 WMS — 仓储与物料管理端到端流程"]
+        direction TB
+        W1["节点1: 原辅料入库验收 IQC<br/>━━━━━━━━━━━━━━━━━━<br/>📥 必要输入:<br/>①初验合格/到货单/供应商COA<br/>②物料质量标准SOP/取样方案<br/>📤 输出: 入库单·合格/不合格判定·待验区/合格区分区<br/>🤖 智能化: 扫码入库·批次自动关联·待验/合格区自动分区·检验结果自动同步<br/>✅ 合规: 入库验收记录完整·取样合规·物料分区符合GMP·账实一致"]
+        W2["节点2: 药材仓储智能养护<br/>━━━━━━━━━━━━━━━━━━<br/>📥 必要输入:<br/>①入库合格/库位分配<br/>②温湿度监控标准/虫霉防控标准/养护周期<br/>📤 输出: 养护记录·近效期物料预警·库位台账<br/>🤖 智能化: 温湿度实时监控报警·虫霉智能监测·养护周期提醒·近效期预警·FIFO管控<br/>✅ 合规: 药材养护符合药典·温湿度记录完整·虫霉防控留痕·批次可追溯"]
+        W3["节点3: 物料出库备料（生产领料）<br/>━━━━━━━━━━━━━━━━━━<br/>📥 必要输入:<br/>①生产工单/BOM清单/领料申请审批<br/>②物料合格/在库/批号可追溯<br/>📤 输出: 领料单·备料记录·批次关联<br/>🤖 智能化: 扫码领料·BOM用量自动校验·双人复核线上管控·批次自动关联·FIFO自动执行<br/>✅ 合规: 领料记录完整·物料与BOM一致·双人复核合规·批次可追溯"]
+        W4["节点4: 半成品/成品入库<br/>━━━━━━━━━━━━━━━━━━<br/>📥 必要输入:<br/>①生产完工单/过程检验合格<br/>📤 输出: 入库台账·批次绑定<br/>🤖 智能化: 扫码入库·批次自动关联·检验结果自动校验·库位自动分配<br/>✅ 合规: 入库记录完整·半成品/成品检验合格·批次信息完整·账实一致"]
+        W1 --> W2 --> W3 --> W4
+    end
+    ENV["🌡️ 环境监控系统<br/>温湿度·虫霉·报警"]
+    MES_IN["🏭 → MES 生产工单触发领料"]
+    MES_OUT["🏭 MES 完工 → 半成品/成品入库"]
+    ENV -.->|"实时监测"| W2
+    MES_IN -->|"工单触发"| W3
+    W4 -.->|"完工入库"| MES_OUT
+    class W1,W2,W3,W4 wms
+    class ENV,MES_IN,MES_OUT ext
+`,
+  d3: `flowchart TB
+    classDef mes fill:#f57f17,stroke:#ffe082,color:#1e293b
+    classDef scada fill:#37474f,stroke:#90a4ae,color:#fff,stroke-dasharray:5
+    classDef check fill:#2e7d32,stroke:#a5d6a7,color:#fff
+    subgraph MES_FLOW["🏭 MES/MOM — 生产制造端到端全流程"]
+        direction TB
+        M1["节点1: 生产工单下发与排产<br/>━━━━━━━━━━━━━━━━━━<br/>📥 必要输入:<br/>①生产计划审批/物料齐套/设备可用/人员资质合规<br/>②生产SOP/工艺规程/批生产指令<br/>📤 输出: 批生产指令·开工许可<br/>🤖 智能化: 工单自动下发·物料齐套校验·设备状态校验·人员资质校验·电子批记录自动生成<br/>✅ 合规: 工单审批合规·批生产指令完整·物料齐套·人员设备资质合规"]
+        M2["节点2: 前处理/炮制<br/>（净制·切制·炒制·炙制等）<br/>━━━━━━━━━━━━━━━━━━<br/>📥 必要输入:<br/>①领料完成/物料批号确认<br/>②炮制工艺参数(温度/时间/加辅料量)/设备参数<br/>📤 输出: 炮制半成品·批生产记录·过程数据自动采集<br/>🤖 智能化: 设备参数自动采集·温度曲线实时监控·工艺超差报警·电子批记录自动填写·投料防错<br/>✅ 合规: 炮制工艺符合药典·参数记录完整·批记录可追溯·操作人员资质合规"]
+        M3["节点3: 提取浓缩<br/>（煎煮·回流·醇沉·浓缩·干燥）<br/>━━━━━━━━━━━━━━━━━━<br/>📥 必要输入:<br/>①炮制半成品合格/提取工艺参数<br/>📤 输出: 浸膏/干膏粉·过程记录·偏差记录<br/>🤖 智能化: 工艺参数自动采集·在线密度监测·超差自动报警·浓缩终点自动判断·电子批记录同步<br/>✅ 合规: 提取工艺符合规程·过程参数完整·偏差处理有记录·浸膏质量符合标准"]
+        M4["节点4: 制剂成型<br/>（片剂·颗粒·胶囊·丸剂等）<br/>━━━━━━━━━━━━━━━━━━<br/>📥 必要输入:<br/>①浸膏/药粉合格/处方配比/混合/制粒/干燥<br/>📤 输出: 制剂半成品·过程数据实时上传<br/>🤖 智能化: 设备参数自动采集·过程质量实时监测·重量差异自动报警·混合均匀度在线监测<br/>✅ 合规: 制剂工艺符合规程·过程质量数据完整·批记录可追溯·产品质量符合标准"]
+        M5["节点5: 内包+外包<br/>（三期打印·标签·说明书·装箱）<br/>━━━━━━━━━━━━━━━━━━<br/>📥 必要输入:<br/>①制剂合格/包材到位/三期信息(批号/有效期/生产日期)<br/>📤 输出: 成品·包装记录·成品批次信息<br/>🤖 智能化: 三期信息自动校验·标签防错管控·扫码关联自动完成·装箱数量校验·全箱码生成<br/>✅ 合规: 包装记录完整·三期准确合规·标签说明书符合要求·成品批次完整可追溯"]
+        M1 --> M2 --> M3 --> M4 --> M5
+    end
+    SCADA_BOX["📡 SCADA数据采集系统<br/>设备参数·温度·压力·重量<br/>实时曲线·超差报警"]
+    WMS_OUT["📦 ← WMS 领料完成<br/>批次确认"]
+    QMS_IN["🔬 → QMS 过程检验<br/>中间品取样"]
+    SCADA_BOX -.->|"实时采集"| M2
+    SCADA_BOX -.->|"实时采集"| M3
+    SCADA_BOX -.->|"实时采集"| M4
+    WMS_OUT -->|"物料到位"| M1
+    M2 -.->|"过程样"| QMS_IN
+    M3 -.->|"过程样"| QMS_IN
+    M4 -.->|"过程样"| QMS_IN
+    class M1,M2,M3,M4,M5 mes
+    class SCADA_BOX scada
+    class WMS_OUT,QMS_IN check
+`,
+  d4: `flowchart TB
+    classDef lims fill:#00695c,stroke:#80cbc4,color:#fff
+    classDef qms fill:#2e7d32,stroke:#a5d6a7,color:#fff
+    classDef erp fill:#1a237e,stroke:#ffd600,color:#fff
+    subgraph QL_FLOW["🔬 QMS + LIMS — 质量检验与放行端到端流程"]
+        direction TB
+        Q1["节点1: 取样管理<br/>（原辅料·中间品·成品·稳定性）<br/>━━━━━━━━━━━━━━━━━━<br/>📥 必要输入:<br/>①到货/生产完工/取样计划/取样SOP<br/>📤 输出: 样品·取样记录·样品台账<br/>🤖 智能化: 取样计划自动生成·记录线上填写·样品条码自动生成·流转全程追踪<br/>✅ 合规: 取样符合SOP·记录完整·样品标识清晰可追溯·人员资质合规"]
+        Q2["节点2: 检验检测<br/>（理化·微生物·重金属·农残·指纹图谱）<br/>━━━━━━━━━━━━━━━━━━<br/>📥 必要输入:<br/>①样品/检验标准/设备校准合格/试剂合格<br/>📤 输出: 检验报告COA·合格/不合格判定·偏差记录<br/>🤖 智能化: 仪器数据自动采集·检验流程线上化·图谱自动存储·结果自动计算·超标自动预警<br/>✅ 合规: 检验方法符合药典·记录完整可追溯·仪器校准合规·数据真实完整"]
+        Q3["节点3: 偏差·变更·CAPA管理<br/>━━━━━━━━━━━━━━━━━━<br/>📥 必要输入:<br/>①检验不合格/生产异常/设备故障/环境超标<br/>📤 输出: 偏差报告·变更记录·CAPA闭环<br/>🤖 智能化: 异常事件自动上报·风险评估线上化·CAPA流程自动追踪·闭环提醒·变更审批线上化<br/>✅ 合规: 偏差处理符合GMP·根因分析到位·CAPA有效闭环·变更审批合规"]
+        Q4["节点4: 成品放行审核 QA<br/>━━━━━━━━━━━━━━━━━━<br/>📥 必要输入:<br/>①批生产记录完整/批检验记录合格<br/>②无未关闭偏差/验证合规/文件齐全<br/>📤 输出: 成品放行单·批次放行·销售许可<br/>🤖 智能化: 放行审核线上化·批记录自动校验·未关闭偏差自动拦截·审批流程自动流转<br/>✅ 合规: 成品放行符合GMP·记录完整·无未关闭偏差·审批合规"]
+        Q1 --> Q2 --> Q3
+        Q3 --> Q4
+        Q2 -.->|"超标触发"| Q3
+    end
+    ERP_RELEASE["🏭 ERP — 成品库存<br/>放行后 → 可售库存"]
+    CRM_SHIP["🚚 CRM — 销售发货<br/>放行后 → 出库许可"]
+    Q4 -->|"放行单"| ERP_RELEASE
+    Q4 -->|"放行许可"| CRM_SHIP
+    class Q1,Q2 lims
+    class Q3,Q4 qms
+    class ERP_RELEASE,CRM_SHIP erp
+`,
+  d5: `flowchart TB
+    classDef crm fill:#004d40,stroke:#80cbc4,color:#fff
+    classDef tms fill:#37474f,stroke:#90a4ae,color:#fff
+    classDef trace fill:#6a1b9a,stroke:#ce93d8,color:#fff
+    subgraph CRM_FLOW["🤝 CRM — 销售物流与追溯端到端流程"]
+        direction TB
+        C1["节点1: 销售订单&发货计划<br/>━━━━━━━━━━━━━━━━━━<br/>📥 必要输入:<br/>①经销商订单/成品放行/库存/效期<br/>📤 输出: 发货单·出库指令<br/>🤖 智能化: 订单自动接收·库存与效期自动校验·发货计划自动生成·客户资质自动校验<br/>✅ 合规: 销售订单审批合规·成品已放行·效期符合要求·客户资质合规"]
+        C2["节点2: 成品出库复核<br/>━━━━━━━━━━━━━━━━━━<br/>📥 必要输入:<br/>①发货单/成品放行/扫码核对三期<br/>📤 输出: 出库单·批次关联物流信息<br/>🤖 智能化: 扫码出库·三期信息自动校验·发货单与实物匹配·双人复核线上管控·批次自动关联<br/>✅ 合规: 出库记录完整·成品与发货单一致·三期准确·双人复核合规"]
+        C3["节点3: 冷链/常温物流运输<br/>━━━━━━━━━━━━━━━━━━<br/>📥 必要输入:<br/>①出库完成/运输温控标准<br/>📤 输出: 运输记录·签收单<br/>🤖 智能化: 运输轨迹实时追踪·温湿度实时监控与报警·运单线上流转·签收记录自动同步<br/>✅ 合规: 冷链符合温控要求·运输记录完整·温湿度数据可追溯·签收齐全"]
+        C4["节点4: 全链条追溯与召回管理<br/>━━━━━━━━━━━━━━━━━━<br/>📥 必要输入:<br/>①批次全链路数据/销售流向/不良反馈<br/>📤 输出: 召回预案·追溯报表·监管上报数据<br/>🤖 智能化: 全批次链路自动追溯·销售流向自动追踪·召回范围自动定位·监管数据自动上报<br/>✅ 合规: 全批次链路可追溯·召回流程合规·监管上报准确·不良事件处理闭环"]
+        C1 --> C2 --> C3 --> C4
+    end
+    TMS_BOX["🚚 TMS运输管理系统<br/>GPS·温湿度·运单·签收"]
+    TRACE_BOX["🔍 追溯系统<br/>原辅料→生产→成品→销售→终端<br/>全链路批次关联"]
+    GMP_BOX["🏛️ 药监追溯上报"]
+    C3 -.->|"运输数据"| TMS_BOX
+    C4 -.->|"追溯数据"| TRACE_BOX
+    TRACE_BOX -.->|"全链路"| C4
+    C4 -.->|"监管上报"| GMP_BOX
+    class C1,C2,C3,C4 crm
+    class TMS_BOX tms
+    class TRACE_BOX,GMP_BOX trace
+`,
+  d6: `flowchart TB
+    classDef supp fill:#6a1b9a,stroke:#ce93d8,color:#fff
+    classDef env fill:#0d7377,stroke:#80cbc4,color:#fff
+    classDef hr fill:#b8860b,stroke:#ffe082,color:#1e293b
+    classDef val fill:#4a148c,stroke:#ce93d8,color:#fff
+    classDef core fill:#1a237e,stroke:#ffd600,color:#fff
+    subgraph SUPPORT["🛡️ 支撑保障体系 — 端到端流程"]
+        direction TB
+        subgraph EAM_BLOCK["🔧 设备管理 EAM"]
+            direction LR
+            E1["设备台账<br/>档案·SOP·参数"] --> E2["点检巡检<br/>计划·记录"]
+            E2 --> E3["维护保养<br/>计划·执行·记录"]
+            E3 --> E4["校准管理<br/>周期·证书·记录"]
+            E4 --> E5["维修管理<br/>故障·工单·处理"]
+            E5 --> E6["设备报废<br/>评估·审批"]
+        end
+        subgraph ENV_BLOCK["🌡️ 环境与能源管理 EMS"]
+            direction LR
+            EN1["洁净区环境监测<br/>温湿度·压差·洁净度"]
+            EN2["虫控管理<br/>监测·防控·记录"]
+            EN3["能耗监测<br/>水·电·汽·气"]
+            EN4["报警处理<br/>超标→上报→闭环"]
+        end
+        subgraph HR_BLOCK["👥 人员资质管理"]
+            direction LR
+            H1["人员档案<br/>信息·岗位"] --> H2["培训管理<br/>GMP·SOP·考核"]
+            H2 --> H3["上岗证管理<br/>资质·到期预警"]
+            H3 --> H4["权限分配<br/>系统·门禁·操作"]
+        end
+        subgraph VAL_BLOCK["✅ 验证与合规审计"]
+            direction LR
+            V1["工艺验证"]
+            V2["清洁验证"]
+            V3["设备验证"]
+            V4["CSV计算机化验证"]
+            V5["GMP内审/外审"]
+        end
+    end
+    CORE_LINK["🔗 与核心系统联动<br/>EAM→MES设备状态校验<br/>EMS→WMS仓储环境·MES生产环境<br/>HR→MES人员资质校验·权限管控<br/>验证→QMS变更·放行审核"]
+    EAM_BLOCK -.-> CORE_LINK
+    ENV_BLOCK -.-> CORE_LINK
+    HR_BLOCK -.-> CORE_LINK
+    VAL_BLOCK -.-> CORE_LINK
+    class E1,E2,E3,E4,E5,E6 supp
+    class EN1,EN2,EN3,EN4 env
+    class H1,H2,H3,H4 hr
+    class V1,V2,V3,V4,V5 val
+    class CORE_LINK core
+`,
+  d7: `flowchart LR
+    classDef erp fill:#1a237e,stroke:#ffd600,color:#fff,stroke-width:3px
+    classDef srm fill:#c62828,stroke:#ffab91,color:#fff
+    classDef crm fill:#004d40,stroke:#80cbc4,color:#fff
+    classDef wms fill:#bf360c,stroke:#ffab91,color:#fff
+    classDef mes fill:#f57f17,stroke:#ffe082,color:#1e293b
+    classDef qms fill:#2e7d32,stroke:#a5d6a7,color:#fff
+    classDef lims fill:#00695c,stroke:#80cbc4,color:#fff
+    classDef eam fill:#6a1b9a,stroke:#ce93d8,color:#fff
+    classDef ems fill:#0d7377,stroke:#80cbc4,color:#fff
+    classDef tms fill:#37474f,stroke:#90a4ae,color:#fff
+    classDef trace fill:#4a148c,stroke:#ce93d8,color:#fff
+    classDef data fill:#ff8f00,stroke:#ffe082,color:#1e293b
+    subgraph DATA["🗄️ 企业数据资产"]
+        MDM["主数据MDM<br/>物料·组织·客户·供应商·设备"]
+        BATCH["批次数据<br/>全链路批次关联"]
+        PROCESS["过程数据<br/>生产·仓储·环境"]
+        QUALITY["质量数据<br/>检验·合规·审计"]
+        BIZ["业务单据<br/>采购·销售·生产·质量"]
+        TRACE_DATA["追溯数据<br/>全链条追溯·召回"]
+    end
+    ERP["🏭 ERP<br/>核心枢纽"]
+    SRM["🔗 SRM"]
+    CRM["🤝 CRM"]
+    WMS["📦 WMS"]
+    MES["🏭 MES"]
+    QMS["✅ QMS"]
+    LIMS["🔬 LIMS"]
+    EAM_SYS["🔧 EAM"]
+    EMS_SYS["🌡️ EMS"]
+    TMS_SYS["🚚 TMS"]
+    TRACE_SYS["🔍 追溯"]
+    ERP -- "物料·BOM·客户·供应商" --> MDM
+    SRM -- "供应商·资质·合同" --> MDM
+    CRM -- "客户·经销商·订单" --> MDM
+    EAM_SYS -- "设备·库位" --> MDM
+    WMS -- "入库·出库·养护·库存" --> PROCESS
+    MES -- "炮制·提取·制剂·包装" --> PROCESS
+    EMS_SYS -- "温湿度·压差·能耗" --> PROCESS
+    LIMS -- "取样·检验·COA·图谱" --> QUALITY
+    QMS -- "偏差·变更·CAPA·验证" --> QUALITY
+    WMS -- "批次关联" --> BATCH
+    MES -- "批次关联" --> BATCH
+    CRM -- "批次关联" --> BATCH
+    TRACE_SYS -- "全链路" --> TRACE_DATA
+    SRM -- "PO·到货单" --> BIZ
+    CRM -- "订单·发货单" --> BIZ
+    WMS -- "入库·出库单" --> BIZ
+    MES -- "工单·批记录" --> BIZ
+    QMS -- "放行单·偏差" --> BIZ
+    ERP <-->|"计划·订单·库存·成本"| SRM
+    ERP <-->|"订单·客户·成品"| CRM
+    ERP <-->|"工单·物料·成本"| WMS
+    ERP <-->|"工单·BOM·成本"| MES
+    MES <-->|"过程质量·完工"| QMS
+    WMS <-->|"入库·出库·批次"| MES
+    LIMS <-->|"检验·放行"| QMS
+    QMS <-->|"放行·偏差"| ERP
+    CRM <-->|"发货·追溯"| TMS_SYS
+    CRM <-->|"追溯·召回"| TRACE_SYS
+    MES <-->|"设备状态"| EAM_SYS
+    WMS <-->|"环境数据"| EMS_SYS
+    MES <-->|"环境数据"| EMS_SYS
+    class ERP erp
+    class SRM srm
+    class CRM crm
+    class WMS wms
+    class MES mes
+    class QMS qms
+    class LIMS lims
+    class EAM_SYS eam
+    class EMS_SYS ems
+    class TMS_SYS tms
+    class TRACE_SYS trace
+    class MDM,BATCH,PROCESS,QUALITY,BIZ,TRACE_DATA data
+`
+};
+
+/* ═══════════════════════════════════════════════════
+   STATE
+   ═══════════════════════════════════════════════════ */
+let currentDiagram = 'd0';
+let isEditMode = false;
+let currentSvg = null;
+let svgScale = 1;
+let nodeOffsets = {};      // {nodeId: {dx, dy}} — cumulative drag offsets from original position
+let nodeLabels = {};       // {nodeId: "new label"} — edited text
+let nodeOrigins = {};      // {nodeId: {x, y}} — original Mermaid node positions (from SVG transform)
+let dragState = null;      // {nodeId, startX, startY, origDx, origDy}
+let textEditEl = null;
+
+/* ═══════════════════════════════════════════════════
+   MERMAID RENDERING
+   ═══════════════════════════════════════════════════ */
+async function renderMermaid(id) {
+  const container = document.createElement('div');
+  const uid = 'mermaid_' + Math.random().toString(36).slice(2, 8);
+  container.style.cssText = 'position:absolute;visibility:hidden;width:0;height:0;overflow:hidden;';
+  document.body.appendChild(container);
+  try {
+    const { svg } = await mermaid.render(uid, diagramSources[id]);
+    container.innerHTML = svg;
+    const svgEl = container.querySelector('svg');
+    return svgEl ? svgEl.cloneNode(true) : null;
+  } catch(e) {
+    console.error('Mermaid render failed:', e);
+    return null;
+  } finally {
+    container.remove();
+  }
+}
+
+/* ═══════════════════════════════════════════════════
+   NODE ID EXTRACTION from SVG
+   ═══════════════════════════════════════════════════ */
+function extractNodeId(el) {
+  const gid = el.id || '';
+  const m = gid.match(/^(?:flowchart-)?([A-Za-z_][\w]*?)(?:-\d+)?$/);
+  if (m && m[1] && m[1] !== 'flowchart') return m[1];
+  const parts = gid.split('-');
+  if (parts.length >= 3) return parts.slice(1, -1).join('-');
+  return '';
+}
+
+function collectNodeGroups(svgEl) {
+  const map = {};
+  svgEl.querySelectorAll('g.node').forEach(g => {
+    const nid = extractNodeId(g);
+    if (nid) map[nid] = g;
+  });
+  return map;
+}
+
+/* ═══════════════════════════════════════════════════
+   EDGE PATH UPDATING
+   Stores original path coords per edge, applies FULL offsets.
+   ═══════════════════════════════════════════════════ */
+let edgeMapCache = null;     // [{el, pathEl, srcId, tgtId}]
+let nodeMapCache = null;     // {nodeId: g element}
+let edgeOrigins = {};        // {edgeGid: [sx,sy,c1x,c1y,c2x,c2y,ex,ey]} — original bezier coords
+
+function buildEdgeMap(svgEl, nodeMap) {
+  edgeMapCache = [];
+  edgeOrigins = {};
+
+  // DIAGNOSTIC: dump ALL g elements with their id and class
+  const allGs = svgEl.querySelectorAll('g');
+  const gInfo = Array.from(allGs).map(g => g.id + '|' + (g.getAttribute('class')||'')).join(', ');
+  console.log('[edgeMap] All ' + allGs.length + ' <g> elements: ' + gInfo.substring(0, 500));
+  // Also dump all path elements
+  const allPaths = svgEl.querySelectorAll('path');
+  const pInfo = Array.from(allPaths).map(p => {
+    const pid = (p.parentElement||p.parentNode).id || '';
+    return pid + ':' + (p.getAttribute('d')||'').substring(0, 40);
+  }).join(' | ');
+  console.log('[edgeMap] All ' + allPaths.length + ' <path> elements (parentId:first40chars): ' + pInfo.substring(0, 500));
+
+  // Try multiple ways to find edge elements
+  let edgeGroups = svgEl.querySelectorAll('g[id^="L-"]');
+  console.log('[edgeMap] Found ' + edgeGroups.length + ' edge groups by id^="L-", nodeMap has ' + Object.keys(nodeMap).length + ' nodes');
+
+  // If that also fails, try all g elements with class containing "edge"
+  if (edgeGroups.length === 0) {
+    edgeGroups = svgEl.querySelectorAll('g[class*="edge"]');
+    console.log('[edgeMap] Retry with class*=edge: ' + edgeGroups.length + ' groups');
+  }
+  // Last resort: get all path elements with marker-end (edges always have arrow markers)
+  if (edgeGroups.length === 0) {
+    const paths = svgEl.querySelectorAll('path[marker-end]');
+    console.log('[edgeMap] Retry with path[marker-end]: ' + paths.length + ' paths');
+    // Each path is a direct child of some g — find the parent g
+    const parentIds = new Set();
+    paths.forEach(p => {
+      const parent = p.parentElement || p.parentNode;
+      if (parent && parent.tagName === 'g') parentIds.add(parent);
+    });
+    edgeGroups = Array.from(parentIds);
+  }
+
+  edgeGroups.forEach(g => {
+    const gid = g.id || '';
+    // Parse source/target from edge ID: L-src-tgt-N or L-src-tgt
+    const parts = gid.split('-');
+    if (parts.length < 3) return;
+    const last = parts[parts.length - 1];
+    const hasNum = /^\d+$/.test(last);
+    const inner = hasNum ? parts.slice(1, -1) : parts.slice(1);
+
+    let srcId = '', tgtId = '';
+    for (let i = 1; i < inner.length; i++) {
+      const src = inner.slice(0, i).join('-');
+      const tgt = inner.slice(i).join('-');
+      if (nodeMap[src]) { srcId = src; tgtId = tgt; break; }
+    }
+
+    const pathEl = g.querySelector('path') || g.getElementsByTagName('path')[0];
+    if (!pathEl) return;
+    if (!srcId) return;
+
+    edgeMapCache.push({ el: g, pathEl, srcId, tgtId });
+    const d = pathEl.getAttribute('d') || '';
+    // Parse bezier: try cubic first, then quadratic, then line
+    let re = /M\s*([\d.]+)\s+([\d.]+)\s+C\s*([\d.]+)\s+([\d.]+)\s*,?\s*([\d.]+)\s+([\d.]+)\s*,?\s*([\d.]+)\s+([\d.]+)/i;
+    let m = d.match(re);
+    if (!m) {
+      re = /M\s*([\d.]+)\s+([\d.]+)\s+Q\s*([\d.]+)\s+([\d.]+)\s*,?\s*([\d.]+)\s+([\d.]+)/i;
+      m = d.match(re);
+      if (m) {
+        const sx=+m[1], sy=+m[2], qx=+m[3], qy=+m[4], ex=+m[5], ey=+m[6];
+        const c1x = sx + 2*(qx-sx)/3, c1y = sy + 2*(qy-sy)/3;
+        const c2x = ex + 2*(qx-ex)/3, c2y = ey + 2*(qy-ey)/3;
+        m = [null, sx, sy, c1x, c1y, c2x, c2y, ex, ey];
+      }
+    }
+    if (!m) {
+      re = /M\s*([\d.]+)\s+([\d.]+)\s+L\s*([\d.]+)\s+([\d.]+)/i;
+      m = d.match(re);
+      if (m) {
+        const sx=+m[1], sy=+m[2], ex=+m[3], ey=+m[4];
+        m = [null, sx, sy, sx, sy, ex, ey, ex, ey];
+      }
+    }
+    if (m) {
+      edgeOrigins[gid] = m.slice(1).map(Number);
+    }
+  });
+
+  console.log('[edgeMap] Cached ' + edgeMapCache.length + ' edges, ' + Object.keys(edgeOrigins).length + ' with origin data');
+}
+
+function applyAllOffsetsToEdges() {
+  if (!currentSvg || !edgeMapCache) { console.log('[edges] No currentSvg or edgeMapCache'); return; }
+  let updated = 0;
+  edgeMapCache.forEach(edge => {
+    const gid = edge.el.id || '';
+    const orig = edgeOrigins[gid];
+    if (!orig) return;
+    const offSrc = nodeOffsets[edge.srcId] || { dx: 0, dy: 0 };
+    const offTgt = nodeOffsets[edge.tgtId] || { dx: 0, dy: 0 };
+    if (offSrc.dx === 0 && offSrc.dy === 0 && offTgt.dx === 0 && offTgt.dy === 0) return;
+    updated++;
+    edge.pathEl.setAttribute('d',
+      `M ${orig[0]+offSrc.dx} ${orig[1]+offSrc.dy} C ${orig[2]+offSrc.dx} ${orig[3]+offSrc.dy}, ${orig[4]+offTgt.dx} ${orig[5]+offTgt.dy}, ${orig[6]+offTgt.dx} ${orig[7]+offTgt.dy}`);
+  });
+  console.log('[edges] Updated ' + updated + ' edge paths');
+}
+
+/* ═══════════════════════════════════════════════════
+   DRAG & DROP
+   ═══════════════════════════════════════════════════ */
+function getEventPos(e) {
+  if (e.touches) return { x: e.touches[0].clientX, y: e.touches[0].clientY };
+  return { x: e.clientX, y: e.clientY };
+}
+
+// Convert screen pixel delta to SVG viewBox coordinate delta
+function screenToSvgDelta(screenDx, screenDy) {
+  if (!currentSvg) return { dx: screenDx / svgScale, dy: screenDy / svgScale };
+  const vb = currentSvg.viewBox.baseVal;
+  const rect = currentSvg.getBoundingClientRect();
+  if (!vb || !vb.width || !rect.width) return { dx: screenDx / svgScale, dy: screenDy / svgScale };
+  const sx = vb.width / rect.width / svgScale;
+  const sy = vb.height / rect.height / svgScale;
+  return { dx: screenDx * sx, dy: screenDy * sy };
+}
+
+// Walk up DOM tree crossing foreignObject boundary to find g.node
+function findNodeEl(el) {
+  while (el) {
+    if (el.classList && el.classList.contains('node')) return el;
+    el = el.parentElement || el.parentNode;
+  }
+  return null;
+}
+
+function onDragStart(e) {
+  if (!isEditMode) return;
+  // Close text editor if open
+  if (textEditEl) { textEditEl.blur(); textEditEl.remove(); textEditEl = null; }
+
+  const target = e.target.closest ? e.target.closest('.node') : findNodeEl(e.target);
+  if (!target) return;
+  const nid = extractNodeId(target);
+  if (!nid) return;
+
+  e.preventDefault();
+
+  const off = nodeOffsets[nid] || { dx: 0, dy: 0 };
+  const pos = getEventPos(e);
+  dragState = {
+    nodeId: nid,
+    el: target,
+    startX: pos.x,
+    startY: pos.y,
+    origDx: off.dx,
+    origDy: off.dy,
+    moved: false
+  };
+}
+
+function onDragMove(e) {
+  if (!dragState) return;
+  e.preventDefault();
+  const pos = getEventPos(e);
+  const delta = screenToSvgDelta(pos.x - dragState.startX, pos.y - dragState.startY);
+  const dx = dragState.origDx + delta.dx;
+  const dy = dragState.origDy + delta.dy;
+  if (Math.abs(delta.dx) > 1 || Math.abs(delta.dy) > 1) {
+    dragState.moved = true;
+  }
+  // Apply original position + offset to node transform
+  const orig = nodeOrigins[dragState.nodeId] || { x: 0, y: 0 };
+  dragState.el.setAttribute('transform', `translate(${orig.x + dx},${orig.y + dy})`);
+  // Store offset (not absolute position)
+  nodeOffsets[dragState.nodeId] = { dx, dy };
+  // Re-apply all edges from originals with full offsets
+  applyAllOffsetsToEdges();
+  console.log('[drag] node=' + dragState.nodeId + ' dx=' + dx.toFixed(1) + ' dy=' + dy.toFixed(1));
+}
+
+function onDragEnd(e) {
+  if (!dragState) return;
+  if (dragState.moved) {
+    saveState();
+  }
+  dragState = null;
+}
+
+/* ═══════════════════════════════════════════════════
+   TEXT EDITING (double-click)
+   ═══════════════════════════════════════════════════ */
+function positionTextEditor(targetEl) {
+  if (!textEditEl) return;
+  const panel = document.getElementById('diagramPanel');
+  const panelRect = panel.getBoundingClientRect();
+  // Get the foreignObject or rect inside the node
+  const fo = targetEl.querySelector('foreignObject');
+  const rect = targetEl.querySelector('rect');
+  let el = fo || rect || targetEl;
+  const elRect = el.getBoundingClientRect();
+  textEditEl.style.left = (elRect.left - panelRect.left) + 'px';
+  textEditEl.style.top = (elRect.top - panelRect.top) + 'px';
+  textEditEl.style.minWidth = Math.max(120, elRect.width) + 'px';
+  textEditEl.style.minHeight = Math.max(40, elRect.height) + 'px';
+}
+
+function startTextEdit(targetEl) {
+  if (!isEditMode) return;
+  const nid = extractNodeId(targetEl);
+  if (!nid) return;
+
+  // Get current label
+  const fo = targetEl.querySelector('foreignObject');
+  let currentText = '';
+  if (fo) {
+    const div = fo.querySelector('div');
+    currentText = div ? div.innerHTML : fo.innerHTML || '';
+  } else {
+    const texts = targetEl.querySelectorAll('text');
+    currentText = Array.from(texts).map(t => t.textContent).join('<br/>');
+  }
+
+  // Save original label if not already saved
+  if (!nodeLabels[nid]) {
+    nodeLabels[nid] = currentText;
+  }
+
+  // Create text editor overlay
+  if (textEditEl) textEditEl.remove();
+  textEditEl = document.createElement('div');
+  textEditEl.className = 'text-editor';
+  textEditEl.contentEditable = 'true';
+  textEditEl.innerHTML = nodeLabels[nid];
+  textEditEl.setAttribute('data-node-id', nid);
+  document.getElementById('diagramPanel').appendChild(textEditEl);
+  positionTextEditor(targetEl);
+
+  const finish = () => {
+    if (!textEditEl) return;
+    const newLabel = textEditEl.innerHTML;
+    const editNid = textEditEl.getAttribute('data-node-id');
+    textEditEl.remove();
+    textEditEl = null;
+
+    if (editNid && newLabel !== nodeLabels[editNid]) {
+      nodeLabels[editNid] = newLabel;
+      applyLabelToNode(editNid, newLabel);
+      saveState();
+    }
+  };
+
+  textEditEl.addEventListener('blur', finish);
+  textEditEl.addEventListener('keydown', (e) => {
+    if (e.key === 'Escape') { textEditEl.innerHTML = nodeLabels[nid]; finish(); }
+    if (e.key === 'Enter' && e.ctrlKey) finish();
+  });
+  textEditEl.focus();
+}
+
+function applyLabelToNode(nid, label) {
+  if (!currentSvg) return;
+  const el = currentSvg.querySelector(`g.node[id*="${nid}"]`);
+  if (!el) return;
+  const fo = el.querySelector('foreignObject');
+  if (fo) {
+    const div = fo.querySelector('div');
+    if (div) {
+      div.innerHTML = label;
+    } else {
+      fo.innerHTML = label;
+    }
+    // Adjust height
+    const lineCount = (label.match(/<br\/?>/g) || []).length + 1;
+    const newH = Math.max(40, lineCount * 28 + 20);
+    fo.setAttribute('height', newH);
+    const rect = el.querySelector('rect');
+    if (rect) rect.setAttribute('height', newH);
+  }
+}
+
+/* ═══════════════════════════════════════════════════
+   PERSISTENCE
+   ═══════════════════════════════════════════════════ */
+function storageKey(id, suffix) { return 'v5_' + id + '_' + suffix; }
+
+function saveState() {
+  try {
+    localStorage.setItem(storageKey(currentDiagram, 'offsets'), JSON.stringify(nodeOffsets));
+    localStorage.setItem(storageKey(currentDiagram, 'labels'), JSON.stringify(nodeLabels));
+    localStorage.setItem('v5_lastDiagram', currentDiagram);
+  } catch(e) {}
+}
+
+function loadState(id) {
+  try {
+    const off = localStorage.getItem(storageKey(id, 'offsets'));
+    const lbl = localStorage.getItem(storageKey(id, 'labels'));
+    return {
+      offsets: off ? JSON.parse(off) : {},
+      labels: lbl ? JSON.parse(lbl) : {}
+    };
+  } catch(e) { return { offsets: {}, labels: {} }; }
+}
+
+/* ═══════════════════════════════════════════════════
+   DRAW.IO XML EXPORT
+   ═══════════════════════════════════════════════════ */
+function parseMermaidForExport(mermaidText) {
+  const nodes = {};
+  const edges = [];
+  const edgeSet = new Set();
+
+  const classDefs = {};
+  const cdRe = /classDef\s+(\w+)\s+(.+)/g;
+  let cm;
+  while ((cm = cdRe.exec(mermaidText)) !== null) {
+    const s = {};
+    if (cm[2].includes('fill:')) s.fill = cm[2].match(/fill:(#[^\s,]+)/)[1];
+    if (cm[2].includes('stroke:')) s.stroke = cm[2].match(/stroke:(#[^\s,]+)/)[1];
+    if (cm[2].includes('color:')) s.color = cm[2].match(/color:(#[^\s,]+)/)[1];
+    if (cm[2].includes('stroke-width:')) s.strokeWidth = cm[2].match(/stroke-width:(\d+)/)[1];
+    if (cm[2].includes('stroke-dasharray:')) s.dashed = true;
+    classDefs[cm[1]] = s;
+  }
+
+  const classAssigns = {};
+  const caRe = /^\s*class\s+([\w,]+)\s+(\w+)\s*$/gm;
+  let am;
+  while ((am = caRe.exec(mermaidText)) !== null) {
+    am[1].split(',').map(s => s.trim()).filter(Boolean).forEach(id => {
+      classAssigns[id] = am[2];
+    });
+  }
+
+  const nodeRe = /(\w+)\[("|')([\s\S]*?)("|')\]/g;
+  let nm;
+  while ((nm = nodeRe.exec(mermaidText)) !== null) {
+    const id = nm[1], label = nm[3];
+    const cls = classAssigns[id] || '', styleDef = classDefs[cls] || null;
+    nodes[id] = { id, label, cls, styleDef, w: 180, h: 80 };
+  }
+
+  const lines = mermaidText.split('\n');
+  for (let line of lines) {
+    line = line.trim();
+    if (!line || /^(classDef|class\s|subgraph|end|direction|flowchart)/.test(line)) continue;
+    line = line.replace(/(\w+)\["[^"]*"\]/g, '$1');
+    const edgeRe = /(\w+)\s*(--\s*"([^"]*)"\s*)?(-->|==>|-\.->|<-->|---)\s*(\|"([^"]*)"\|)?\s*(\w+)/g;
+    let em;
+    while ((em = edgeRe.exec(line)) !== null) {
+      const src = em[1], label1 = em[3] || '', op = em[4], label2 = em[6] || '', tgt = em[7];
+      if (op === '~~~') continue;
+      const label = label1 || label2;
+      let type = 'solid';
+      if (op === '==>') type = 'thick';
+      else if (op === '-.->') type = 'dashed';
+      else if (op === '<-->') type = 'bidirectional';
+      else if (op === '---') type = 'none';
+      const key = `${src}->${tgt}`;
+      if (!edgeSet.has(key)) {
+        edgeSet.add(key);
+        edges.push({ source: src, target: tgt, type, label, bidirectional: op === '<-->' });
+      }
+      const tgtStart = em[0].lastIndexOf(tgt);
+      if (tgtStart > 0) edgeRe.lastIndex = em.index + tgtStart;
+    }
+  }
+
+  // Apply stored positions
+  Object.keys(nodes).forEach(id => {
+    nodes[id].x = 20 + Math.random() * 500;
+    nodes[id].y = 20 + Math.random() * 400;
+    const label_lines = nodes[id].label.split('<br/>').length;
+    nodes[id].h = Math.max(60, label_lines * 26 + 20);
+    nodes[id].w = Math.max(160, Math.min(400, nodes[id].label.length * 7));
+  });
+
+  return { nodes: Object.values(nodes), edges };
+}
+
+function generateDrawioXml(data) {
+  function esc(raw) {
+    return raw.replace(/&/g, '&amp;').replace(/"/g, '&quot;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+  }
+  function styleStr(def) {
+    if (!def) return 'rounded=1;whiteSpace=wrap;html=1;';
+    const p = ['rounded=1', 'whiteSpace=wrap', 'html=1'];
+    if (def.fill) p.push('fillColor=' + def.fill);
+    if (def.stroke) p.push('strokeColor=' + def.stroke);
+    if (def.color) p.push('fontColor=' + def.color);
+    if (def.strokeWidth) p.push('strokeWidth=' + def.strokeWidth);
+    if (def.dashed) p.push('dashed=1');
+    return p.join(';') + ';';
+  }
+
+  let xml = `<mxGraphModel dx="0" dy="0" grid="1" gridSize="10" guides="1" tooltips="1" connect="1" arrows="1" fold="1" page="1" pageScale="1" pageWidth="1600" pageHeight="1200">
+  <root>
+    <mxCell id="0"/>
+    <mxCell id="1" parent="0"/>
+`;
+  let counter = 2;
+  const idMap = {};
+  data.nodes.forEach(n => {
+    const cid = 'cell-' + (counter++);
+    idMap[n.id] = cid;
+    xml += `    <mxCell id="${cid}" value="${esc(n.label)}" style="${styleStr(n.styleDef)}" vertex="1" parent="1">
+      <mxGeometry x="${Math.round(n.x||0)}" y="${Math.round(n.y||0)}" width="${Math.max(80, n.w||180)}" height="${Math.max(40, n.h||80)}" as="geometry"/>
+    </mxCell>
+`;
+  });
+  data.edges.forEach(e => {
+    const src = idMap[e.source], tgt = idMap[e.target];
+    if (!src || !tgt) return;
+    const cid = 'cell-' + (counter++);
+    let es = 'edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;';
+    if (e.type === 'dashed') es += 'dashed=1;dashPattern=8 8;';
+    else if (e.type === 'thick') es += 'strokeWidth=3;';
+    es += 'endArrow=classic;';
+    if (e.bidirectional) es += 'startArrow=classic;';
+    xml += `    <mxCell id="${cid}" value="${esc(e.label||'')}" style="${es}" edge="1" parent="1" source="${src}" target="${tgt}">
+      <mxGeometry relative="1" as="geometry"/>
+    </mxCell>
+`;
+  });
+  xml += `  </root>
+</mxGraphModel>`;
+  return xml;
+}
+
+/* ═══════════════════════════════════════════════════
+   UI: RENDER + DISPLAY
+   ═══════════════════════════════════════════════════ */
+async function displayDiagram(id) {
+  const container = document.getElementById('svgContainer');
+  container.innerHTML = '<div style="color:#64748b;font-size:.9rem;">正在渲染...</div>';
+
+  const svgEl = await renderMermaid(id);
+  if (!svgEl) {
+    container.innerHTML = '<div style="color:#f87171;">渲染失败</div>';
+    return;
+  }
+
+  currentSvg = svgEl;
+  container.innerHTML = '';
+  container.appendChild(svgEl);
+
+  // Load saved state
+  const saved = loadState(id);
+  nodeOffsets = saved.offsets;
+  nodeLabels = saved.labels;
+
+  // Build node & edge maps + store edge originals
+  nodeMapCache = collectNodeGroups(svgEl);
+  buildEdgeMap(svgEl, nodeMapCache);
+
+  // Extract original Mermaid positions for each node
+  nodeOrigins = {};
+  Object.keys(nodeMapCache).forEach(nid => {
+    const g = nodeMapCache[nid];
+    const t = g.getAttribute('transform') || '';
+    const m = t.match(/translate\(([\d.]+),\s*([\d.]+)\)/);
+    nodeOrigins[nid] = m ? { x: parseFloat(m[1]), y: parseFloat(m[2]) } : { x: 0, y: 0 };
+  });
+
+  // Apply saved offsets (add to original position)
+  Object.keys(nodeOffsets).forEach(nid => {
+    const off = nodeOffsets[nid];
+    const orig = nodeOrigins[nid] || { x: 0, y: 0 };
+    const g = nodeMapCache[nid];
+    if (g) {
+      g.setAttribute('transform', `translate(${orig.x + off.dx},${orig.y + off.dy})`);
+    }
+  });
+
+  // Apply saved labels
+  Object.keys(nodeLabels).forEach(nid => {
+    applyLabelToNode(nid, nodeLabels[nid]);
+  });
+
+  // Apply edge offsets
+  applyAllOffsetsToEdges();
+
+  // Attach interaction handlers
+  attachNodeHandlers(svgEl);
+  updateEditModeUI();
+}
+
+let globalListenersAdded = false;
+
+function attachNodeHandlers(svgEl) {
+  svgEl.querySelectorAll('g.node').forEach(g => {
+    g.classList.add('node');
+    const nid = extractNodeId(g);
+    g.setAttribute('data-node-id', nid);
+    g.addEventListener('mousedown', onDragStart);
+    g.addEventListener('touchstart', onDragStart, { passive: false });
+    g.addEventListener('dblclick', (e) => {
+      e.stopPropagation();
+      startTextEdit(g);
+    });
+  });
+  // Global move/end handlers — add only once
+  if (!globalListenersAdded) {
+    globalListenersAdded = true;
+    document.addEventListener('mousemove', onDragMove);
+    document.addEventListener('mouseup', onDragEnd);
+    document.addEventListener('touchmove', onDragMove, { passive: false });
+    document.addEventListener('touchend', onDragEnd);
+  }
+}
+
+function updateEditModeUI() {
+  const panel = document.getElementById('diagramPanel');
+  const container = document.getElementById('svgContainer');
+  const btn = document.getElementById('btnEdit');
+
+  if (isEditMode) {
+    panel.classList.add('editing');
+    container.classList.add('editing');
+    btn.textContent = '👁️ 预览模式';
+    btn.style.background = 'var(--success)';
+    document.getElementById('statusBadge').textContent = 'v5.0 | 编辑中 ✏️';
+  } else {
+    panel.classList.remove('editing');
+    container.classList.remove('editing');
+    btn.textContent = '✏️ 编辑模式';
+    btn.style.background = 'var(--btn-bg)';
+    document.getElementById('statusBadge').textContent = 'v5.0 | 预览中 👁️';
+  }
+}
+
+/* ═══════════════════════════════════════════════════
+   UI: BUTTON ACTIONS
+   ═══════════════════════════════════════════════════ */
+function toast(msg) {
+  const el = document.getElementById('toast');
+  el.textContent = msg;
+  el.classList.add('show');
+  setTimeout(() => el.classList.remove('show'), 2500);
+}
+
+function toggleEdit() {
+  // Close text editor if open
+  if (textEditEl) { textEditEl.blur(); textEditEl.remove(); textEditEl = null; }
+  isEditMode = !isEditMode;
+  updateEditModeUI();
+  toast(isEditMode ? '✏️ 编辑模式：拖拽移动节点，双击编辑文字' : '👁️ 预览模式：只读查看');
+}
+
+async function switchDiagram(btn) {
+  const newId = btn.dataset.diagram;
+  if (newId === currentDiagram && btn.classList.contains('active')) return;
+
+  // Save current state
+  saveState();
+
+  // Update sidebar
+  document.querySelectorAll('.sidebar .tab').forEach(t => t.classList.remove('active'));
+  btn.classList.add('active');
+  currentDiagram = newId;
+
+  await displayDiagram(newId);
+  document.getElementById('svgContainer').scrollTo(0, 0);
+}
+
+async function resetDiagram() {
+  if (!confirm(`确定恢复「${currentDiagram}」为默认版本？所有修改将丢失。`)) return;
+  try {
+    localStorage.removeItem(storageKey(currentDiagram, 'offsets'));
+    localStorage.removeItem(storageKey(currentDiagram, 'labels'));
+  } catch(e) {}
+  nodeOffsets = {};
+  nodeLabels = {};
+  nodeOrigins = {};
+  await displayDiagram(currentDiagram);
+  toast('↺ 已恢复默认版本');
+}
+
+async function downloadDrawio() {
+  saveState();
+  const mermaidText = diagramSources[currentDiagram];
+  const data = parseMermaidForExport(mermaidText);
+  const xml = generateDrawioXml(data);
+  const blob = new Blob([xml], { type: 'application/xml;charset=utf-8' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = `花红药业架构图_${currentDiagram}.drawio`;
+  a.click();
+  URL.revokeObjectURL(url);
+  toast('✅ .drawio 文件已下载（可用桌面端 Draw.io 打开编辑）');
+}
+
+async function downloadSVG() {
+  if (!currentSvg) { toast('无可导出内容'); return; }
+  const clone = currentSvg.cloneNode(true);
+
+  // Apply stored offsets to node positions in the cloned SVG
+  clone.querySelectorAll('g.node').forEach(g => {
+    const nid = extractNodeId(g);
+    const off = nodeOffsets[nid] || { dx: 0, dy: 0 };
+    const orig = nodeOrigins[nid] || { x: 0, y: 0 };
+    g.setAttribute('transform', `translate(${orig.x + off.dx},${orig.y + off.dy})`);
+  });
+
+  // Apply stored labels
+  Object.keys(nodeLabels).forEach(nid => {
+    const g = clone.querySelector(`g.node[data-node-id="${nid}"]`);
+    if (g) {
+      const fo = g.querySelector('foreignObject');
+      if (fo) {
+        const div = fo.querySelector('div');
+        if (div) div.innerHTML = nodeLabels[nid];
+        else fo.innerHTML = nodeLabels[nid];
+      }
+    }
+  });
+
+  // Apply edge offsets on clone using the same originals
+  clone.querySelectorAll('g.edgePath').forEach(g => {
+    const gid = g.id || '';
+    const orig = edgeOrigins[gid];
+    if (!orig) return;
+    const parts = gid.split('-');
+    if (parts.length < 3) return;
+    const last = parts[parts.length - 1];
+    const hasNum = /^\d+$/.test(last);
+    const inner = hasNum ? parts.slice(1, -1) : parts.slice(1);
+    let srcId = '', tgtId = '';
+    for (let i = 1; i < inner.length; i++) {
+      const src = inner.slice(0, i).join('-');
+      const tgt = inner.slice(i).join('-');
+      if (nodeMapCache && nodeMapCache[src]) { srcId = src; tgtId = tgt; break; }
+    }
+    const offSrc = nodeOffsets[srcId] || { dx: 0, dy: 0 };
+    const offTgt = nodeOffsets[tgtId] || { dx: 0, dy: 0 };
+    const pathEl = g.querySelector('path');
+    if (pathEl) {
+      pathEl.setAttribute('d',
+        `M ${orig[0]+offSrc.dx} ${orig[1]+offSrc.dy} C ${orig[2]+offSrc.dx} ${orig[3]+offSrc.dy}, ${orig[4]+offTgt.dx} ${orig[5]+offTgt.dy}, ${orig[6]+offTgt.dx} ${orig[7]+offTgt.dy}`);
+    }
+  });
+
+  const data = new XMLSerializer().serializeToString(clone);
+  const blob = new Blob([data], { type: 'image/svg+xml' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = `花红药业架构图_${currentDiagram}.svg`;
+  a.click();
+  URL.revokeObjectURL(url);
+  toast('✅ SVG 已下载');
+}
+
+function printDiagram() { window.print(); }
+
+/* ═══════════════════════════════════════════════════
+   ZOOM
+   ═══════════════════════════════════════════════════ */
+function zoomSVG(action) {
+  if (!currentSvg) return;
+  const container = document.getElementById('svgContainer');
+
+  if (action === 'fit') {
+    currentSvg.style.transform = '';
+    svgScale = 1;
+  } else if (action === 'reset') {
+    svgScale = 1;
+    currentSvg.style.transform = `scale(${svgScale})`;
+    currentSvg.style.transformOrigin = 'top left';
+  } else {
+    svgScale = Math.max(0.2, Math.min(4, svgScale * action));
+    currentSvg.style.transform = `scale(${svgScale})`;
+    currentSvg.style.transformOrigin = 'top left';
+  }
+  document.getElementById('zoomLabel').textContent = Math.round(svgScale * 100) + '%';
+}
+
+/* ═══════════════════════════════════════════════════
+   KEYBOARD
+   ═══════════════════════════════════════════════════ */
+document.addEventListener('keydown', (e) => {
+  if (e.ctrlKey && e.key === 'e') { e.preventDefault(); toggleEdit(); }
+  if (e.ctrlKey && e.key === 's') { e.preventDefault(); downloadDrawio(); }
+  if (e.ctrlKey && e.key === '0') { e.preventDefault(); zoomSVG('fit'); }
+  if (e.key === 'Escape' && isEditMode) { e.preventDefault(); toggleEdit(); }
+});
+
+/* ═══════════════════════════════════════════════════
+   BOOT
+   ═══════════════════════════════════════════════════ */
+async function boot() {
+  try {
+    document.getElementById('statusBadge').textContent = 'v5.0 | 初始化...';
+
+    // Wait for Mermaid
+    if (typeof mermaid === 'undefined') {
+      await new Promise((resolve, reject) => {
+        let waited = 0;
+        const check = () => {
+          if (typeof mermaid !== 'undefined') return resolve();
+          if (waited > 20000) return reject(new Error('Mermaid加载超时'));
+          waited += 100;
+          setTimeout(check, 100);
+        };
+        check();
+      });
+    }
+
+    mermaid.initialize({
+      startOnLoad: false, theme: 'base', securityLevel: 'loose',
+      flowchart: {
+        useMaxWidth: false, htmlLabels: true, curve: 'basis',
+        padding: 18, nodeSpacing: 45, rankSpacing: 55,
+      },
+      themeVariables: {
+        primaryColor: '#e8f0fe', primaryBorderColor: '#1a237e', primaryTextColor: '#1e293b',
+        lineColor: '#475569', secondaryColor: '#fce4ec', tertiaryColor: '#e0f2f1',
+      }
+    });
+
+    const hash = window.location.hash.replace('#', '');
+    const startId = (hash && diagramSources[hash]) ? hash : 'd0';
+    currentDiagram = startId;
+
+    const activeBtn = document.querySelector(`[data-diagram="${startId}"]`);
+    if (activeBtn) {
+      document.querySelectorAll('.sidebar .tab').forEach(t => t.classList.remove('active'));
+      activeBtn.classList.add('active');
+    }
+
+    await displayDiagram(startId);
+    document.getElementById('statusBadge').textContent = 'v5.0 | 就绪 👁️';
+
+    // Pre-render other diagrams in background
+    setTimeout(async () => {
+      for (const id of Object.keys(diagramSources)) {
+        if (id === startId) continue;
+        try { await renderMermaid(id); } catch(e) {}
+      }
+    }, 2000);
+
+  } catch(e) {
+    console.error('Boot failed:', e);
+    document.getElementById('svgContainer').innerHTML =
+      '<div style="text-align:center;color:#f87171;padding:40px;"><div style="font-size:2rem;margin-bottom:12px;">⚠️</div><div style="font-size:.9rem;">初始化失败：' + e.message + '</div><div style="color:#94a3b8;font-size:.78rem;margin-top:8px;">请打开浏览器控制台（F12）查看详细日志</div></div>';
+    document.getElementById('statusBadge').textContent = 'v5.0 | 错误';
+  }
+}
+
+document.addEventListener('DOMContentLoaded', boot);
+</script>
+</body>
+</html>
