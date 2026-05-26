@@ -812,12 +812,14 @@ let currentDiagram = 'd0';
 let isEditMode = false;
 let textEditEl = null;
 let currentParsed = null;
+let deletedNodeIds = [];
+let deletedEdgeIds = [];
 
 function storageKey(id) { return 'cy6_' + id; }
 
 function saveState() {
   if (!cy) return;
-  const state = { positions: {}, labels: {}, edges: [], nodeDefs: [] };
+  const state = { positions: {}, labels: {}, edges: [], nodeDefs: [], deletedNodeIds: deletedNodeIds.slice(), deletedEdgeIds: deletedEdgeIds.slice() };
   cy.nodes().forEach(n => {
     state.positions[n.id()] = n.position();
     state.labels[n.id()] = n.data('label') || '';
@@ -877,6 +879,10 @@ function initCy(container, elements, isLR) {
   // Apply saved state (positions + labels + edges + node CRUD)
   const saved = loadState(currentDiagram);
   if (saved) {
+    // Restore deleted-node/edge tracking
+    deletedNodeIds = saved.deletedNodeIds || [];
+    deletedEdgeIds = saved.deletedEdgeIds || [];
+
     cy.ready(() => {
       // Build set of saved node IDs for add/delete tracking
       var savedNodeIds = {};
@@ -884,10 +890,11 @@ function initCy(container, elements, isLR) {
         saved.nodeDefs.forEach(function(nd) { savedNodeIds[nd.id] = nd; });
       }
 
-      // Remove nodes deleted by user (exist in cy but not in saved state)
-      if (saved.nodeDefs && saved.nodeDefs.length > 0) {
-        cy.nodes().forEach(function(n) {
-          if (!savedNodeIds[n.id()]) n.remove();
+      // Remove nodes explicitly deleted by user (tracked in deletedNodeIds)
+      if (deletedNodeIds.length > 0) {
+        deletedNodeIds.forEach(function(id) {
+          var n = cy.getElementById(id);
+          if (n.length) n.remove();
         });
       }
 
@@ -896,7 +903,7 @@ function initCy(container, elements, isLR) {
       cy.nodes().forEach(function(n) { existingIds[n.id()] = true; });
       if (saved.nodeDefs) {
         saved.nodeDefs.forEach(function(nd) {
-          if (!existingIds[nd.id]) {
+          if (!existingIds[nd.id] && !deletedNodeIds.includes(nd.id)) {
             cy.add({
               group: 'nodes',
               data: { id: nd.id, label: nd.label, cls: nd.cls || '', parent: nd.parent || undefined },
@@ -912,17 +919,46 @@ function initCy(container, elements, isLR) {
         if (saved.labels && saved.labels[n.id()]) n.data('label', saved.labels[n.id()]);
       });
 
-      // Restore edges from saved state
+      // Merge edges: remove deleted, add saved, then add new parsed edges not in saved
+      if (deletedEdgeIds.length > 0) {
+        deletedEdgeIds.forEach(function(id) {
+          var e = cy.getElementById(id);
+          if (e.length) e.remove();
+        });
+      }
       if (saved.edges && saved.edges.length > 0) {
-        cy.edges().remove();
+        // Remove edges NOT in saved state (but keep new parsed edges)
+        var savedEdgeIds = {};
+        saved.edges.forEach(function(ed) { savedEdgeIds[ed.id] = true; });
+        cy.edges().forEach(function(e) {
+          if (!savedEdgeIds[e.id()] && !deletedEdgeIds.includes(e.id())) {
+            // Edge was parsed fresh but not in saved state — could be a new source edge.
+            // Keep it if it came from the current parse (currentParsed).
+            var fromParse = currentParsed && currentParsed.edges.some(function(pe) { return pe.data.id === e.id(); });
+            if (!fromParse) e.remove();
+          }
+        });
+        // Add/update edges from saved state (skip deleted)
         saved.edges.forEach(function(ed) {
-          cy.add({ group: 'edges', data: ed });
+          if (deletedEdgeIds.includes(ed.id)) return;
+          var existing = cy.getElementById(ed.id);
+          if (existing.length) {
+            existing.data('type', ed.type || 'solid');
+            existing.data('label', ed.label || '');
+            if (ed.bidirectional) existing.data('bidirectional', true);
+            else existing.removeData('bidirectional');
+          } else {
+            cy.add({ group: 'edges', data: ed });
+          }
         });
       }
 
       // Update grab state for edit mode
       updateNodeGrab();
     });
+  } else {
+    deletedNodeIds = [];
+    deletedEdgeIds = [];
   }
 
   // Events
@@ -1073,7 +1109,8 @@ function showEdgePanel(edge) {
 
   edgePanelEl.querySelector('.edge-panel-delete').onclick = function() {
     if (confirm('确定删除连线 ' + src + ' → ' + tgt + '？')) {
-      edge.remove();
+      deletedEdgeIds.push(currentEdge.id());
+      currentEdge.remove();
       saveState();
       hideEdgePanel();
       toast('🗑️ 连线已删除');
@@ -1441,11 +1478,22 @@ document.addEventListener('keydown', (e) => {
     const sel = cy.$(':selected');
     if (sel.length > 0) {
       e.preventDefault();
-      const desc = sel.isEdge() ? ('连线 ' + sel.data('source') + ' → ' + sel.data('target')) : ('节点 ' + sel.id());
-      if (confirm('确定删除 ' + desc + '？')) {
-        sel.remove();
-        saveState();
-        toast('🗑️ ' + desc + ' 已删除');
+      if (sel.isEdge()) {
+        const desc = '连线 ' + sel.data('source') + ' → ' + sel.data('target');
+        if (confirm('确定删除 ' + desc + '？')) {
+          deletedEdgeIds.push(sel.id());
+          sel.remove();
+          saveState();
+          toast('🗑️ ' + desc + ' 已删除');
+        }
+      } else {
+        const desc = '节点 ' + sel.id();
+        if (confirm('确定删除 ' + desc + '？（关联连线将一并删除）')) {
+          deletedNodeIds.push(sel.id());
+          sel.remove();
+          saveState();
+          toast('🗑️ ' + desc + ' 已删除');
+        }
       }
     }
   }
