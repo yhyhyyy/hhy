@@ -1,0 +1,1552 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>花红药业 — 企业信息化顶层架构设计 | Cytoscape 可视化编辑</title>
+<script>
+// Sequential library loader
+(function loadLibs() {
+  var base = 'https://cdn.jsdelivr.net/npm/';
+  var libs = [
+    base + 'dagre@0.8.5/dist/dagre.min.js',
+    base + 'cytoscape@3.28.1/dist/cytoscape.min.js',
+    base + 'cytoscape-dagre@2.5.0/cytoscape-dagre.js'
+  ];
+  var idx = 0;
+  var fallback = [
+    'https://unpkg.com/dagre@0.8.5/dist/dagre.min.js',
+    'https://unpkg.com/cytoscape@3.28.1/dist/cytoscape.min.js',
+    'https://unpkg.com/cytoscape-dagre@2.5.0/cytoscape-dagre.js'
+  ];
+  function load(i, useFallback) {
+    if (i >= libs.length) { console.log('All libs loaded'); return; }
+    var s = document.createElement('script');
+    s.src = useFallback ? fallback[i] : libs[i];
+    s.onload = function() { console.log('Loaded: ' + s.src.split('/').pop()); load(i + 1, false); };
+    s.onerror = function() {
+      if (!useFallback) { console.warn('Retrying from unpkg: ' + fallback[i]); load(i, true); }
+      else { console.error('Failed to load lib ' + i); }
+    };
+    document.head.appendChild(s);
+  }
+  load(0, false);
+})();
+</script>
+<style>
+  :root {
+    --bg: #0f172a; --panel: #1e293b; --border: #334155; --text: #e2e8f0;
+    --accent: #38bdf8; --btn-bg: #2563eb; --btn-hover: #1d4ed8;
+    --success: #16a34a; --warn: #d97706;
+  }
+  *{margin:0;padding:0;box-sizing:border-box}
+  body{
+    background:var(--bg);color:var(--text);
+    font-family:'Segoe UI','PingFang SC','Microsoft YaHei',sans-serif;
+    min-height:100vh;display:flex;flex-direction:column;
+  }
+  .header{
+    background:linear-gradient(135deg,#1a237e 0%,#0d47a1 40%,#004d40 100%);
+    padding:14px 28px;display:flex;align-items:center;justify-content:space-between;
+    border-bottom:2px solid var(--border);flex-shrink:0;
+  }
+  .header .title{font-size:1.25rem;font-weight:700;letter-spacing:.5px}
+  .header .title span{color:var(--accent)}
+  .header .actions{display:flex;gap:8px;flex-wrap:wrap;align-items:center}
+  .header .actions button{
+    padding:7px 16px;border-radius:8px;border:1px solid rgba(255,255,255,.2);
+    background:rgba(255,255,255,.08);color:#fff;cursor:pointer;
+    font-size:.8rem;transition:.2s;font-family:inherit
+  }
+  .header .actions button:hover{background:rgba(255,255,255,.18)}
+  .header .actions .btn-edit{background:var(--btn-bg);border-color:var(--btn-bg)}
+  .header .actions .btn-edit:hover{background:var(--btn-hover)}
+  .header .actions .btn-dl{background:var(--success);border-color:var(--success)}
+  .header .actions .btn-reset{background:var(--warn);border-color:var(--warn)}
+  .header .badge{
+    background:rgba(255,255,255,.12);padding:5px 12px;
+    border-radius:20px;font-size:.78rem;letter-spacing:1px
+  }
+  .main{display:flex;flex:1;overflow:hidden}
+  .sidebar{
+    width:250px;background:var(--panel);border-right:1px solid var(--border);
+    padding:10px 0;overflow-y:auto;flex-shrink:0
+  }
+  .sidebar .sec-title{
+    font-size:.68rem;text-transform:uppercase;letter-spacing:2px;
+    padding:6px 18px 3px;color:#94a3b8;margin-top:6px
+  }
+  .sidebar .tab{
+    display:block;width:100%;padding:9px 18px;background:transparent;
+    border:none;color:#cbd5e1;text-align:left;font-size:.85rem;
+    cursor:pointer;transition:.12s;border-left:3px solid transparent;font-family:inherit
+  }
+  .sidebar .tab:hover{background:#334155;color:#fff}
+  .sidebar .tab.active{
+    background:#1e3a5f;color:#fff;border-left-color:var(--accent);font-weight:600
+  }
+  .sidebar .tab .emoji{margin-right:5px}
+  .content{flex:1;display:flex;flex-direction:column;overflow:hidden;position:relative}
+  #cy{flex:1;background:#f8fafc}
+  .zoom-controls{
+    position:absolute;bottom:20px;right:20px;display:flex;
+    flex-direction:column;gap:4px;z-index:10
+  }
+  .zoom-controls button{
+    width:38px;height:38px;border-radius:8px;border:1px solid #cbd5e1;
+    background:#fff;color:#334155;font-size:1.1rem;cursor:pointer;
+    transition:.15s;display:flex;align-items:center;justify-content:center;
+    box-shadow:0 2px 8px rgba(0,0,0,.1)
+  }
+  .zoom-controls button:hover{background:#f1f5f9;border-color:#94a3b8}
+  .zoom-controls .zoom-label{
+    text-align:center;font-size:.72rem;color:#64748b;background:#fff;
+    border-radius:6px;padding:4px 6px;font-weight:600;box-shadow:0 2px 8px rgba(0,0,0,.08)
+  }
+  .toast{
+    position:fixed;bottom:24px;left:50%;transform:translateX(-50%);
+    background:#1e293b;color:#e2e8f0;padding:10px 24px;
+    border-radius:8px;font-size:.82rem;z-index:100;
+    border:1px solid var(--border);box-shadow:0 4px 16px rgba(0,0,0,.4);
+    opacity:0;transition:opacity .3s;pointer-events:none
+  }
+  .toast.show{opacity:1}
+  .text-editor{
+    position:fixed;z-index:50;min-width:150px;min-height:40px;
+    background:#fff;border:2px solid #2563eb;border-radius:6px;
+    padding:6px 10px;font-size:13px;outline:none;
+    box-shadow:0 4px 20px rgba(0,0,0,.25);font-family:inherit
+  }
+  .edge-panel{
+    position:fixed;z-index:60;background:#1e293b;border:1px solid #475569;
+    border-radius:10px;padding:16px;box-shadow:0 8px 32px rgba(0,0,0,.5);
+    display:flex;flex-direction:column;gap:8px;min-width:240px
+  }
+  .edge-panel-title{font-size:.85rem;font-weight:600;color:#e2e8f0;margin-bottom:2px}
+  .edge-panel-row{font-size:.78rem;color:#94a3b8;word-break:break-all}
+  .edge-panel-row b{color:#f1f5f9}
+  .edge-panel-type,.edge-panel-src,.edge-panel-tgt{
+    padding:6px 8px;background:#0f172a;color:#e2e8f0;border:1px solid #475569;
+    border-radius:6px;font-size:.8rem;outline:none
+  }
+  .edge-panel-label{
+    padding:6px 8px;background:#0f172a;color:#e2e8f0;border:1px solid #475569;
+    border-radius:6px;font-size:.8rem;outline:none
+  }
+  .edge-panel-btns{display:flex;gap:6px;margin-top:2px}
+  .edge-panel-btns button{
+    flex:1;padding:6px 0;border-radius:6px;border:none;font-size:.78rem;cursor:pointer;font-weight:500
+  }
+  .edge-panel-save,.edge-panel-add{background:#2563eb;color:#fff}
+  .edge-panel-save:hover,.edge-panel-add:hover{background:#1d4ed8}
+  .edge-panel-delete{background:#dc2626;color:#fff}
+  .edge-panel-delete:hover{background:#b91c1c}
+  .edge-panel-cancel{background:#334155;color:#e2e8f0}
+  .edge-panel-cancel:hover{background:#475569}
+  .edge-panel-check{display:flex;align-items:center;gap:6px;color:#e2e8f0;font-size:.78rem;cursor:pointer}
+  ::-webkit-scrollbar{width:5px}
+  ::-webkit-scrollbar-track{background:transparent}
+  ::-webkit-scrollbar-thumb{background:#475569;border-radius:3px}
+  @media(max-width:900px){
+    .main{flex-direction:column}
+    .sidebar{width:100%;max-height:180px;display:flex;flex-wrap:wrap;overflow-x:auto;padding:6px}
+    .sidebar .sec-title{display:none}
+    .sidebar .tab{flex-shrink:0;border-left:none;border-bottom:3px solid transparent;font-size:.75rem;padding:7px 10px}
+    .sidebar .tab.active{border-left:none;border-bottom-color:var(--accent)}
+  }
+  @media print{
+    .sidebar,.header .actions,.zoom-controls{display:none!important}
+    #cy{background:#fff!important}
+  }
+</style>
+</head>
+<body>
+
+<div class="header">
+  <div>
+    <div class="title">花红药业 — <span>企业信息化顶层架构设计</span></div>
+    <div style="font-size:.73rem;color:#94a3b8;margin-top:3px">ERP核心枢纽 · CRM客户关系 · SRM供应商关系 · MOM制造运营 | 拖拽编辑 · 双击改文字</div>
+  </div>
+  <div class="actions">
+    <button class="btn-edit" id="btnEdit" onclick="toggleEdit()">✏️ 编辑模式</button>
+    <button id="btnAddNode" onclick="showAddNodePanel()" style="display:none;background:#0d9488;color:#fff;border:none;border-radius:6px;padding:7px 14px;font-size:.78rem;cursor:pointer;font-weight:500">🔲 新增实体</button>
+    <button id="btnAddEdge" onclick="showAddEdgePanel()" style="display:none;background:#7c3aed;color:#fff;border:none;border-radius:6px;padding:7px 14px;font-size:.78rem;cursor:pointer;font-weight:500">➕ 新增连线</button>
+    <button class="btn-dl" onclick="downloadDrawio()">📥 下载.drawio</button>
+    <button onclick="downloadPNG()">🖼️ 下载PNG</button>
+    <button onclick="printDiagram()">🖨️ 打印</button>
+    <button class="btn-reset" onclick="resetDiagram()">↺ 重置</button>
+    <span class="badge" id="statusBadge">v6.0 | 初始化...</span>
+  </div>
+</div>
+
+<div class="main">
+  <nav class="sidebar">
+    <div class="sec-title">📐 总体架构</div>
+    <button class="tab active" data-diagram="d0" onclick="switchDiagram(this)">
+      <span class="emoji">🏗️</span> 总体架构全景图
+    </button>
+    <div class="sec-title">🔗 核心主链路</div>
+    <button class="tab" data-diagram="d1" onclick="switchDiagram(this)">
+      <span class="emoji">📋</span> 计划与采购管理
+    </button>
+    <button class="tab" data-diagram="d2" onclick="switchDiagram(this)">
+      <span class="emoji">📦</span> 仓储与物料管理
+    </button>
+    <button class="tab" data-diagram="d3" onclick="switchDiagram(this)">
+      <span class="emoji">🏭</span> 生产制造全流程
+    </button>
+    <button class="tab" data-diagram="d4" onclick="switchDiagram(this)">
+      <span class="emoji">🔬</span> 质量检验与放行
+    </button>
+    <button class="tab" data-diagram="d5" onclick="switchDiagram(this)">
+      <span class="emoji">🚚</span> 销售物流与追溯
+    </button>
+    <div class="sec-title">🛡️ 支撑保障</div>
+    <button class="tab" data-diagram="d6" onclick="switchDiagram(this)">
+      <span class="emoji">🔧</span> 支撑保障体系
+    </button>
+    <div class="sec-title">🔀 数据集成</div>
+    <button class="tab" data-diagram="d7" onclick="switchDiagram(this)">
+      <span class="emoji">🌐</span> 系统数据流与集成
+    </button>
+  </nav>
+
+  <div class="content">
+    <div id="cy"></div>
+    <div class="zoom-controls" id="zoomControls">
+      <button onclick="zoomCy(1.2)" title="放大">＋</button>
+      <span class="zoom-label" id="zoomLabel">100%</span>
+      <button onclick="zoomCy(0.8)" title="缩小">−</button>
+      <button onclick="zoomCy('fit')" title="适应窗口">⊡</button>
+      <button onclick="zoomCy('reset')" title="重置缩放">↺</button>
+    </div>
+  </div>
+</div>
+
+<div class="toast" id="toast"></div>
+
+<script>
+/* ═════════════════════════════════════════════
+   DIAGRAM SOURCES (original Mermaid text)
+   ═════════════════════════════════════════════ */
+const diagramSources = {
+  d0: `flowchart LR
+    subgraph MAIN["花红药业 — 企业信息化顶层架构"]
+        direction TB
+        subgraph SRM["🔗 SRM 供应商关系管理 — 计划与采购管理链路"]
+            direction LR
+            SRM1["① 需求计划制定<br/>销售预测·库存·产能<br/>→ MPS/MRP/采购申请"]
+            SRM2["② 供应商准入审计<br/>资质·GMP证书·产地<br/>→ 合格名录·分级"]
+            SRM3["③ 采购下单协同<br/>MRP·价格库·合同<br/>→ 采购订单PO"]
+            SRM4["④ 到货接收初验<br/>PO·送货单·COA<br/>→ 到货单·初验记录"]
+            SRM1 --> SRM2 --> SRM3 --> SRM4
+        end
+        ERP["🏭 ERP 企业资源计划系统<br/>━━━━━━━━━━━━━━━━━━━━<br/>📊 财务总账 · 💰 成本核算 · 🧾 应收应付<br/>📋 主数据管理MDM · 🗓️ 生产计划排产MPS/MRP<br/>📦 库存管理 · 👥 人力资源管理<br/>📈 商业智能BI · 📑 文档管理DMS<br/>━━━━━━━━━━━━━━━━━━━━<br/>⬤ 企业资源计划核心枢纽 ⬤"]
+        subgraph CRM["🤝 CRM 客户关系管理 — 销售物流追溯链路"]
+            direction LR
+            CRM1["① 销售订单发货计划<br/>经销商订单·成品放行<br/>→ 发货单·出库指令"]
+            CRM2["② 成品出库复核<br/>发货单·三期扫码<br/>→ 出库单·批次关联"]
+            CRM3["③ 冷链常温运输<br/>温控标准·GPS<br/>→ 运输记录·签收单"]
+            CRM4["④ 追溯与召回管理<br/>全链路批次·不良反馈<br/>→ 召回预案·监管上报"]
+            CRM1 --> CRM2 --> CRM3 --> CRM4
+        end
+        subgraph MOM["⚙️ MOM 制造运营管理 — 生产·仓储·质量·保障"]
+            direction TB
+            subgraph MOM_WMS["📦 WMS 仓储管理"]
+                direction LR
+                W1["入库验收IQC"] --> W2["智能养护"] --> W3["出库备料"] --> W4["成品入库"]
+            end
+            subgraph MOM_MES["🏭 MES 制造执行"]
+                direction LR
+                MM1["工单排产"] --> MM2["前处理炮制"] --> MM3["提取浓缩"] --> MM4["制剂成型"] --> MM5["内包外包"]
+            end
+            subgraph MOM_QL["🔬 QMS+LIMS 质量管理"]
+                direction LR
+                QL1["取样管理"] --> QL2["检验检测"] --> QL3["偏差CAPA"] --> QL4["成品放行QA"]
+            end
+            subgraph MOM_SP["🔧 支撑保障"]
+                direction LR
+                SP1["EAM设备"] ; SP2["EMS环境"] ; SP3["HR人员"] ; SP4["验证合规"]
+            end
+        end
+        GMP["🏛️ GMP合规监管<br/>药监数据上报·审计追踪<br/>数据完整性ALCOA+"]
+        SCADA["📡 SCADA数据采集<br/>设备参数·环境实时数据"]
+        TMS["🚚 TMS运输管理<br/>GPS·温控·签收"]
+        SRM ==>|"MRP·采购申请·PO"| ERP
+        ERP ==>|"生产计划·工单·物料需求"| MOM
+        ERP ==>|"成品库存·销售订单·客户"| CRM
+        SRM -.->|"到货初验→入库触发"| MOM
+        MOM -.->|"放行单→可售库存→发货"| CRM
+        CRM -.->|"发货指令→出库确认"| MOM
+        MOM -.-> SCADA
+        CRM -.-> TMS
+        TMS -.-> CRM
+        SCADA -.-> GMP
+        MOM -.-> GMP
+        CRM -.-> GMP
+        SRM -.-> GMP
+    end
+    subgraph LEGEND["📋 图例"]
+        direction TB
+        L_ERP[" ERP 核心枢纽 "]
+        L_SRM[" SRM 供应商关系管理 "]
+        L_CRM[" CRM 客户关系管理 "]
+        L_MOM[" MOM 制造运营管理 "]
+        L_SUPP[" 支撑保障体系 "]
+        L_EXT[" 外部系统 "]
+    end
+    MAIN ~~~ LEGEND
+    classDef erpCore fill:#1a237e,stroke:#ffd600,color:#fff,stroke-width:3px
+    classDef srmBlock fill:#c62828,stroke:#ffab91,color:#fff
+    classDef crmBlock fill:#00695c,stroke:#80cbc4,color:#fff
+    classDef momBlock fill:#e65100,stroke:#ffcc80,color:#fff
+    classDef wmsNode fill:#bf360c,stroke:#ffab91,color:#fff
+    classDef mesNode fill:#f57f17,stroke:#ffe082,color:#1e293b
+    classDef qmsNode fill:#2e7d32,stroke:#a5d6a7,color:#fff
+    classDef suppNode fill:#6a1b9a,stroke:#ce93d8,color:#fff
+    classDef extNode fill:#37474f,stroke:#90a4ae,color:#fff,stroke-dasharray:5
+    class ERP erpCore
+    class SRM1,SRM2,SRM3,SRM4 srmBlock
+    class CRM1,CRM2,CRM3,CRM4 crmBlock
+    class W1,W2,W3,W4 wmsNode
+    class MM1,MM2,MM3,MM4,MM5 mesNode
+    class QL1,QL2,QL3,QL4 qmsNode
+    class SP1,SP2,SP3,SP4 suppNode
+    class GMP,SCADA,TMS extNode
+    class L_ERP erpCore
+    class L_SRM srmBlock
+    class L_CRM crmBlock
+    class L_MOM momBlock
+    class L_SUPP suppNode
+    class L_EXT extNode
+`,
+  d1: `flowchart TB
+    classDef srm fill:#c62828,stroke:#ffab91,color:#fff
+    classDef erp fill:#1a237e,stroke:#ffd600,color:#fff
+    classDef wms fill:#bf360c,stroke:#ffab91,color:#fff
+    subgraph PLANNING["📊 ERP — 需求计划与排产"]
+        N1["节点1: 销售需求&生产计划制定<br/>━━━━━━━━━━━━━━━━━━<br/>📥 必要输入条件:<br/>①历史销售数据/市场订单/经销商要货计划<br/>②成品库存/在制工单/安全库存标准<br/>③产能/设备负荷/交期/GMP生产周期<br/>━━━━━━━━━━━━━━━━━━<br/>📤 输出: 年度/月度/周主计划·MRP·采购申请<br/>🤖 智能化: 智能排产·库存预警·需求预测算法·MRP自动运算<br/>✅ 合规: 计划符合GMP周期·变更留痕·BOM一致"]
+    end
+    subgraph SRM_BLOCK["🔗 SRM — 供应商全生命周期管理"]
+        N2["节点2: 供应商准入&审计<br/>━━━━━━━━━━━━━━━━━━<br/>📥 必要输入条件:<br/>①营业执照/生产许可证/GMP证书/检验报告<br/>②原辅料标准/产地标准/质量风险评估<br/>━━━━━━━━━━━━━━━━━━<br/>📤 输出: 合格供应商名录·准入审批单·供应商分级<br/>🤖 智能化: 资质自动校验·审计流程线上化·分级自动评分·到期预警<br/>✅ 合规: 供应商资质合规·审计记录完整·道地药材产地可追溯"]
+        N3["节点3: 原辅料/包材采购下单<br/>━━━━━━━━━━━━━━━━━━<br/>📥 必要输入条件:<br/>①MRP物料需求计划/采购申请审批完成<br/>②合格供应商/采购价格/合同条款<br/>━━━━━━━━━━━━━━━━━━<br/>📤 输出: 采购订单PO·到货计划<br/>🤖 智能化: 订单自动生成·价格自动校验·交期预警·合同线上审批<br/>✅ 合规: 采购订单与审批一致·合同合规·来源合格供应商"]
+        N4["节点4: 到货接收与初验<br/>━━━━━━━━━━━━━━━━━━<br/>📥 必要输入条件:<br/>①采购订单/送货单/供应商出厂检验报告<br/>━━━━━━━━━━━━━━━━━━<br/>📤 输出: 到货单·初验记录·不合格拒收<br/>🤖 智能化: 到货单与PO自动匹配·标签扫码校验·不合格自动隔离<br/>✅ 合规: 到货记录完整·初验合规·不合格品处理留痕"]
+    end
+    subgraph NEXT["➡️ 下一环节"]
+        WMS_TRIG["📦 触发 WMS 入库验收IQC"]
+    end
+    N1 --> N2 --> N3 --> N4 --> WMS_TRIG
+    class N1 erp
+    class N2,N3,N4 srm
+    class WMS_TRIG wms
+    N1 -.->|"MRP数据"| N3
+    N2 -.->|"合格供应商名录"| N3
+`,
+  d2: `flowchart TB
+    classDef wms fill:#bf360c,stroke:#ffab91,color:#fff
+    classDef ext fill:#37474f,stroke:#90a4ae,color:#fff
+    subgraph WMS_FLOW["📦 WMS — 仓储与物料管理端到端流程"]
+        direction TB
+        W1["节点1: 原辅料入库验收 IQC<br/>━━━━━━━━━━━━━━━━━━<br/>📥 必要输入:<br/>①初验合格/到货单/供应商COA<br/>②物料质量标准SOP/取样方案<br/>📤 输出: 入库单·合格/不合格判定·待验区/合格区分区<br/>🤖 智能化: 扫码入库·批次自动关联·待验/合格区自动分区·检验结果自动同步<br/>✅ 合规: 入库验收记录完整·取样合规·物料分区符合GMP·账实一致"]
+        W2["节点2: 药材仓储智能养护<br/>━━━━━━━━━━━━━━━━━━<br/>📥 必要输入:<br/>①入库合格/库位分配<br/>②温湿度监控标准/虫霉防控标准/养护周期<br/>📤 输出: 养护记录·近效期物料预警·库位台账<br/>🤖 智能化: 温湿度实时监控报警·虫霉智能监测·养护周期提醒·近效期预警·FIFO管控<br/>✅ 合规: 药材养护符合药典·温湿度记录完整·虫霉防控留痕·批次可追溯"]
+        W3["节点3: 物料出库备料（生产领料）<br/>━━━━━━━━━━━━━━━━━━<br/>📥 必要输入:<br/>①生产工单/BOM清单/领料申请审批<br/>②物料合格/在库/批号可追溯<br/>📤 输出: 领料单·备料记录·批次关联<br/>🤖 智能化: 扫码领料·BOM用量自动校验·双人复核线上管控·批次自动关联·FIFO自动执行<br/>✅ 合规: 领料记录完整·物料与BOM一致·双人复核合规·批次可追溯"]
+        W4["节点4: 半成品/成品入库<br/>━━━━━━━━━━━━━━━━━━<br/>📥 必要输入:<br/>①生产完工单/过程检验合格<br/>📤 输出: 入库台账·批次绑定<br/>🤖 智能化: 扫码入库·批次自动关联·检验结果自动校验·库位自动分配<br/>✅ 合规: 入库记录完整·半成品/成品检验合格·批次信息完整·账实一致"]
+        W1 --> W2 --> W3 --> W4
+    end
+    ENV["🌡️ 环境监控系统<br/>温湿度·虫霉·报警"]
+    MES_IN["🏭 → MES 生产工单触发领料"]
+    MES_OUT["🏭 MES 完工 → 半成品/成品入库"]
+    TMS_d2["🚚 TMS运输管理<br/>GPS·温控·签收"]
+    ENV -.->|"实时监测"| W2
+    MES_IN -->|"工单触发"| W3
+    W4 -.->|"完工入库"| MES_OUT
+    TMS_d2 <-.->|"运输协同·状态回传"| W4
+    class W1,W2,W3,W4 wms
+    class ENV,MES_IN,MES_OUT,TMS_d2 ext
+`,
+  d3: `flowchart TB
+    classDef mes fill:#f57f17,stroke:#ffe082,color:#1e293b
+    classDef scada fill:#37474f,stroke:#90a4ae,color:#fff,stroke-dasharray:5
+    classDef check fill:#2e7d32,stroke:#a5d6a7,color:#fff
+    subgraph MES_FLOW["🏭 MES/MOM — 生产制造端到端全流程"]
+        direction TB
+        M1["节点1: 生产工单下发与排产<br/>━━━━━━━━━━━━━━━━━━<br/>📥 必要输入:<br/>①生产计划审批/物料齐套/设备可用/人员资质合规<br/>②生产SOP/工艺规程/批生产指令<br/>📤 输出: 批生产指令·开工许可<br/>🤖 智能化: 工单自动下发·物料齐套校验·设备状态校验·人员资质校验·电子批记录自动生成<br/>✅ 合规: 工单审批合规·批生产指令完整·物料齐套·人员设备资质合规"]
+        M2["节点2: 前处理/炮制<br/>（净制·切制·炒制·炙制等）<br/>━━━━━━━━━━━━━━━━━━<br/>📥 必要输入:<br/>①领料完成/物料批号确认<br/>②炮制工艺参数(温度/时间/加辅料量)/设备参数<br/>📤 输出: 炮制半成品·批生产记录·过程数据自动采集<br/>🤖 智能化: 设备参数自动采集·温度曲线实时监控·工艺超差报警·电子批记录自动填写·投料防错<br/>✅ 合规: 炮制工艺符合药典·参数记录完整·批记录可追溯·操作人员资质合规"]
+        M3["节点3: 提取浓缩<br/>（煎煮·回流·醇沉·浓缩·干燥）<br/>━━━━━━━━━━━━━━━━━━<br/>📥 必要输入:<br/>①炮制半成品合格/提取工艺参数<br/>📤 输出: 浸膏/干膏粉·过程记录·偏差记录<br/>🤖 智能化: 工艺参数自动采集·在线密度监测·超差自动报警·浓缩终点自动判断·电子批记录同步<br/>✅ 合规: 提取工艺符合规程·过程参数完整·偏差处理有记录·浸膏质量符合标准"]
+        M4["节点4: 制剂成型<br/>（片剂·颗粒·胶囊·丸剂等）<br/>━━━━━━━━━━━━━━━━━━<br/>📥 必要输入:<br/>①浸膏/药粉合格/处方配比/混合/制粒/干燥<br/>📤 输出: 制剂半成品·过程数据实时上传<br/>🤖 智能化: 设备参数自动采集·过程质量实时监测·重量差异自动报警·混合均匀度在线监测<br/>✅ 合规: 制剂工艺符合规程·过程质量数据完整·批记录可追溯·产品质量符合标准"]
+        M5["节点5: 内包+外包<br/>（三期打印·标签·说明书·装箱）<br/>━━━━━━━━━━━━━━━━━━<br/>📥 必要输入:<br/>①制剂合格/包材到位/三期信息(批号/有效期/生产日期)<br/>📤 输出: 成品·包装记录·成品批次信息<br/>🤖 智能化: 三期信息自动校验·标签防错管控·扫码关联自动完成·装箱数量校验·全箱码生成<br/>✅ 合规: 包装记录完整·三期准确合规·标签说明书符合要求·成品批次完整可追溯"]
+        M1 --> M2 --> M3 --> M4 --> M5
+    end
+    SCADA_BOX["📡 SCADA数据采集系统<br/>设备参数·温度·压力·重量<br/>实时曲线·超差报警"]
+    WMS_OUT["📦 ← WMS 领料完成<br/>批次确认"]
+    QMS_IN["🔬 → QMS 过程检验<br/>中间品取样"]
+    SCADA_BOX -.->|"实时采集"| M2
+    SCADA_BOX -.->|"实时采集"| M3
+    SCADA_BOX -.->|"实时采集"| M4
+    WMS_OUT -->|"物料到位"| M1
+    M2 -.->|"过程样"| QMS_IN
+    M3 -.->|"过程样"| QMS_IN
+    M4 -.->|"过程样"| QMS_IN
+    class M1,M2,M3,M4,M5 mes
+    class SCADA_BOX scada
+    class WMS_OUT,QMS_IN check
+`,
+  d4: `flowchart TB
+    classDef lims fill:#00695c,stroke:#80cbc4,color:#fff
+    classDef qms fill:#2e7d32,stroke:#a5d6a7,color:#fff
+    classDef erp fill:#1a237e,stroke:#ffd600,color:#fff
+    subgraph QL_FLOW["🔬 QMS + LIMS — 质量检验与放行端到端流程"]
+        direction TB
+        Q1["节点1: 取样管理<br/>（原辅料·中间品·成品·稳定性）<br/>━━━━━━━━━━━━━━━━━━<br/>📥 必要输入:<br/>①到货/生产完工/取样计划/取样SOP<br/>📤 输出: 样品·取样记录·样品台账<br/>🤖 智能化: 取样计划自动生成·记录线上填写·样品条码自动生成·流转全程追踪<br/>✅ 合规: 取样符合SOP·记录完整·样品标识清晰可追溯·人员资质合规"]
+        Q2["节点2: 检验检测<br/>（理化·微生物·重金属·农残·指纹图谱）<br/>━━━━━━━━━━━━━━━━━━<br/>📥 必要输入:<br/>①样品/检验标准/设备校准合格/试剂合格<br/>📤 输出: 检验报告COA·合格/不合格判定·偏差记录<br/>🤖 智能化: 仪器数据自动采集·检验流程线上化·图谱自动存储·结果自动计算·超标自动预警<br/>✅ 合规: 检验方法符合药典·记录完整可追溯·仪器校准合规·数据真实完整"]
+        Q3["节点3: 偏差·变更·CAPA管理<br/>━━━━━━━━━━━━━━━━━━<br/>📥 必要输入:<br/>①检验不合格/生产异常/设备故障/环境超标<br/>📤 输出: 偏差报告·变更记录·CAPA闭环<br/>🤖 智能化: 异常事件自动上报·风险评估线上化·CAPA流程自动追踪·闭环提醒·变更审批线上化<br/>✅ 合规: 偏差处理符合GMP·根因分析到位·CAPA有效闭环·变更审批合规"]
+        Q4["节点4: 成品放行审核 QA<br/>━━━━━━━━━━━━━━━━━━<br/>📥 必要输入:<br/>①批生产记录完整/批检验记录合格<br/>②无未关闭偏差/验证合规/文件齐全<br/>📤 输出: 成品放行单·批次放行·销售许可<br/>🤖 智能化: 放行审核线上化·批记录自动校验·未关闭偏差自动拦截·审批流程自动流转<br/>✅ 合规: 成品放行符合GMP·记录完整·无未关闭偏差·审批合规"]
+        Q1 --> Q2 --> Q3
+        Q3 --> Q4
+        Q2 -.->|"超标触发"| Q3
+    end
+    ERP_RELEASE["🏭 ERP — 成品库存<br/>放行后 → 可售库存"]
+    CRM_SHIP["🚚 CRM — 销售发货<br/>放行后 → 出库许可"]
+    Q4 -->|"放行单"| ERP_RELEASE
+    Q4 -->|"放行许可"| CRM_SHIP
+    class Q1,Q2 lims
+    class Q3,Q4 qms
+    class ERP_RELEASE,CRM_SHIP erp
+`,
+  d5: `flowchart TB
+    classDef crm fill:#004d40,stroke:#80cbc4,color:#fff
+    classDef tms fill:#37474f,stroke:#90a4ae,color:#fff
+    classDef trace fill:#6a1b9a,stroke:#ce93d8,color:#fff
+    subgraph CRM_FLOW["🤝 CRM — 销售物流与追溯端到端流程"]
+        direction TB
+        C1["节点1: 销售订单&发货计划<br/>━━━━━━━━━━━━━━━━━━<br/>📥 必要输入:<br/>①经销商订单/成品放行/库存/效期<br/>📤 输出: 发货单·出库指令<br/>🤖 智能化: 订单自动接收·库存与效期自动校验·发货计划自动生成·客户资质自动校验<br/>✅ 合规: 销售订单审批合规·成品已放行·效期符合要求·客户资质合规"]
+        C2["节点2: 成品出库复核<br/>━━━━━━━━━━━━━━━━━━<br/>📥 必要输入:<br/>①发货单/成品放行/扫码核对三期<br/>📤 输出: 出库单·批次关联物流信息<br/>🤖 智能化: 扫码出库·三期信息自动校验·发货单与实物匹配·双人复核线上管控·批次自动关联<br/>✅ 合规: 出库记录完整·成品与发货单一致·三期准确·双人复核合规"]
+        C3["节点3: 冷链/常温物流运输<br/>━━━━━━━━━━━━━━━━━━<br/>📥 必要输入:<br/>①出库完成/运输温控标准<br/>📤 输出: 运输记录·签收单<br/>🤖 智能化: 运输轨迹实时追踪·温湿度实时监控与报警·运单线上流转·签收记录自动同步<br/>✅ 合规: 冷链符合温控要求·运输记录完整·温湿度数据可追溯·签收齐全"]
+        C4["节点4: 全链条追溯与召回管理<br/>━━━━━━━━━━━━━━━━━━<br/>📥 必要输入:<br/>①批次全链路数据/销售流向/不良反馈<br/>📤 输出: 召回预案·追溯报表·监管上报数据<br/>🤖 智能化: 全批次链路自动追溯·销售流向自动追踪·召回范围自动定位·监管数据自动上报<br/>✅ 合规: 全批次链路可追溯·召回流程合规·监管上报准确·不良事件处理闭环"]
+        C1 --> C2 --> C3 --> C4
+    end
+    TMS_BOX["🚚 TMS运输管理系统<br/>GPS·温湿度·运单·签收"]
+    TRACE_BOX["🔍 追溯系统<br/>原辅料→生产→成品→销售→终端<br/>全链路批次关联"]
+    GMP_BOX["🏛️ 药监追溯上报"]
+    C3 -.->|"运输数据"| TMS_BOX
+    C4 -.->|"追溯数据"| TRACE_BOX
+    TRACE_BOX -.->|"全链路"| C4
+    C4 -.->|"监管上报"| GMP_BOX
+    class C1,C2,C3,C4 crm
+    class TMS_BOX tms
+    class TRACE_BOX,GMP_BOX trace
+`,
+  d6: `flowchart TB
+    classDef supp fill:#6a1b9a,stroke:#ce93d8,color:#fff
+    classDef env fill:#0d7377,stroke:#80cbc4,color:#fff
+    classDef hr fill:#b8860b,stroke:#ffe082,color:#1e293b
+    classDef val fill:#4a148c,stroke:#ce93d8,color:#fff
+    classDef core fill:#1a237e,stroke:#ffd600,color:#fff
+    subgraph SUPPORT["🛡️ 支撑保障体系 — 端到端流程"]
+        direction TB
+        subgraph EAM_BLOCK["🔧 设备管理 EAM"]
+            direction LR
+            E1["设备台账<br/>档案·SOP·参数"] --> E2["点检巡检<br/>计划·记录"]
+            E2 --> E3["维护保养<br/>计划·执行·记录"]
+            E3 --> E4["校准管理<br/>周期·证书·记录"]
+            E4 --> E5["维修管理<br/>故障·工单·处理"]
+            E5 --> E6["设备报废<br/>评估·审批"]
+        end
+        subgraph ENV_BLOCK["🌡️ 环境与能源管理 EMS"]
+            direction LR
+            EN1["洁净区环境监测<br/>温湿度·压差·洁净度"]
+            EN2["虫控管理<br/>监测·防控·记录"]
+            EN3["能耗监测<br/>水·电·汽·气"]
+            EN4["报警处理<br/>超标→上报→闭环"]
+        end
+        subgraph HR_BLOCK["👥 人员资质管理"]
+            direction LR
+            H1["人员档案<br/>信息·岗位"] --> H2["培训管理<br/>GMP·SOP·考核"]
+            H2 --> H3["上岗证管理<br/>资质·到期预警"]
+            H3 --> H4["权限分配<br/>系统·门禁·操作"]
+        end
+        subgraph VAL_BLOCK["✅ 验证与合规审计"]
+            direction LR
+            V1["工艺验证"]
+            V2["清洁验证"]
+            V3["设备验证"]
+            V4["CSV计算机化验证"]
+            V5["GMP内审/外审"]
+        end
+    end
+    CORE_LINK["🔗 与核心系统联动<br/>EAM→MES设备状态校验<br/>EMS→WMS仓储环境·MES生产环境<br/>HR→MES人员资质校验·权限管控<br/>验证→QMS变更·放行审核"]
+    EAM_BLOCK -.-> CORE_LINK
+    ENV_BLOCK -.-> CORE_LINK
+    HR_BLOCK -.-> CORE_LINK
+    VAL_BLOCK -.-> CORE_LINK
+    class E1,E2,E3,E4,E5,E6 supp
+    class EN1,EN2,EN3,EN4 env
+    class H1,H2,H3,H4 hr
+    class V1,V2,V3,V4,V5 val
+    class CORE_LINK core
+`,
+  d7: `flowchart LR
+    classDef erp fill:#1a237e,stroke:#ffd600,color:#fff,stroke-width:3px
+    classDef srm fill:#c62828,stroke:#ffab91,color:#fff
+    classDef crm fill:#004d40,stroke:#80cbc4,color:#fff
+    classDef wms fill:#bf360c,stroke:#ffab91,color:#fff
+    classDef mes fill:#f57f17,stroke:#ffe082,color:#1e293b
+    classDef qms fill:#2e7d32,stroke:#a5d6a7,color:#fff
+    classDef lims fill:#00695c,stroke:#80cbc4,color:#fff
+    classDef eam fill:#6a1b9a,stroke:#ce93d8,color:#fff
+    classDef ems fill:#0d7377,stroke:#80cbc4,color:#fff
+    classDef tms fill:#37474f,stroke:#90a4ae,color:#fff
+    classDef trace fill:#4a148c,stroke:#ce93d8,color:#fff
+    classDef data fill:#ff8f00,stroke:#ffe082,color:#1e293b
+    subgraph DATA["🗄️ 企业数据资产"]
+        MDM["主数据MDM<br/>物料·组织·客户·供应商·设备"]
+        BATCH["批次数据<br/>全链路批次关联"]
+        PROCESS["过程数据<br/>生产·仓储·环境"]
+        QUALITY["质量数据<br/>检验·合规·审计"]
+        BIZ["业务单据<br/>采购·销售·生产·质量"]
+        TRACE_DATA["追溯数据<br/>全链条追溯·召回"]
+    end
+    ERP["🏭 ERP<br/>核心枢纽"]
+    SRM["🔗 SRM"]
+    CRM["🤝 CRM"]
+    WMS["📦 WMS"]
+    MES["🏭 MES"]
+    QMS["✅ QMS"]
+    LIMS["🔬 LIMS"]
+    EAM_SYS["🔧 EAM"]
+    EMS_SYS["🌡️ EMS"]
+    TMS_SYS["🚚 TMS"]
+    TRACE_SYS["🔍 追溯"]
+    ERP -- "物料·BOM·客户·供应商" --> MDM
+    SRM -- "供应商·资质·合同" --> MDM
+    CRM -- "客户·经销商·订单" --> MDM
+    EAM_SYS -- "设备·库位" --> MDM
+    WMS -- "入库·出库·养护·库存" --> PROCESS
+    MES -- "炮制·提取·制剂·包装" --> PROCESS
+    EMS_SYS -- "温湿度·压差·能耗" --> PROCESS
+    LIMS -- "取样·检验·COA·图谱" --> QUALITY
+    QMS -- "偏差·变更·CAPA·验证" --> QUALITY
+    WMS -- "批次关联" --> BATCH
+    MES -- "批次关联" --> BATCH
+    CRM -- "批次关联" --> BATCH
+    TRACE_SYS -- "全链路" --> TRACE_DATA
+    SRM -- "PO·到货单" --> BIZ
+    CRM -- "订单·发货单" --> BIZ
+    WMS -- "入库·出库单" --> BIZ
+    MES -- "工单·批记录" --> BIZ
+    QMS -- "放行单·偏差" --> BIZ
+    ERP <-->|"计划·订单·库存·成本"| SRM
+    ERP <-->|"订单·客户·成品"| CRM
+    ERP <-->|"工单·物料·成本"| WMS
+    ERP <-->|"工单·BOM·成本"| MES
+    MES <-->|"过程质量·完工"| QMS
+    WMS <-->|"入库·出库·批次"| MES
+    LIMS <-->|"检验·放行"| QMS
+    QMS <-->|"放行·偏差"| ERP
+    CRM <-->|"发货·追溯"| TMS_SYS
+    CRM <-->|"追溯·召回"| TRACE_SYS
+    MES <-->|"设备状态"| EAM_SYS
+    WMS <-->|"环境数据"| EMS_SYS
+    WMS <-.->|"运输协同"| TMS_SYS
+    MES <-->|"环境数据"| EMS_SYS
+    class ERP erp
+    class SRM srm
+    class CRM crm
+    class WMS wms
+    class MES mes
+    class QMS qms
+    class LIMS lims
+    class EAM_SYS eam
+    class EMS_SYS ems
+    class TMS_SYS tms
+    class TRACE_SYS trace
+    class MDM,BATCH,PROCESS,QUALITY,BIZ,TRACE_DATA data
+`
+};
+
+/* ═════════════════════════════════════════════
+   MERMAID TEXT PARSER
+   ═════════════════════════════════════════════ */
+function parseMermaidDiagram(mermaidText) {
+  // Parse classDefs
+  const classDefs = {};
+  const cdRe = /classDef\s+(\w+)\s+(.+)/g;
+  let cm;
+  while ((cm = cdRe.exec(mermaidText)) !== null) {
+    const s = {};
+    if (cm[2].includes('fill:')) s.fill = cm[2].match(/fill:(#[^\s,]+)/)[1];
+    if (cm[2].includes('stroke:')) s.stroke = cm[2].match(/stroke:(#[^\s,]+)/)[1];
+    if (cm[2].includes('color:')) s.color = cm[2].match(/color:(#[^\s,]+)/)[1];
+    if (cm[2].includes('stroke-width:')) s.sw = cm[2].match(/stroke-width:(\d+)/)[1];
+    if (cm[2].includes('stroke-dasharray:')) s.dashed = true;
+    classDefs[cm[1]] = s;
+  }
+
+  // Parse class assignments
+  const classAssigns = {};
+  const caRe = /^\s*class\s+([\w,]+)\s+(\w+)\s*$/gm;
+  let am;
+  while ((am = caRe.exec(mermaidText)) !== null) {
+    am[1].split(',').map(s => s.trim()).filter(Boolean).forEach(id => {
+      classAssigns[id] = am[2];
+    });
+  }
+
+  // Parse nodes
+  const nodes = [];
+  const nodeMap = {};
+  const nodeRe = /(\w+)\[("|')([\s\S]*?)("|')\]/g;
+  let nm;
+  while ((nm = nodeRe.exec(mermaidText)) !== null) {
+    const id = nm[1], label = nm[3].replace(/<br\/?>/g, '\n');
+    const cls = classAssigns[id] || '';
+    const styleDef = classDefs[cls] || null;
+    nodes.push({ data: { id, label, cls } });
+    nodeMap[id] = { cls, styleDef };
+  }
+
+  // Parse edges
+  const edges = [];
+  const edgeSet = new Set();
+  const lines = mermaidText.split('\n');
+  for (let line of lines) {
+    line = line.trim();
+    if (!line || /^(classDef|class\s|subgraph|end|direction|flowchart)/.test(line)) continue;
+    line = line.replace(/(\w+)\["[^"]*"\]/g, '$1');
+    const edgeRe = /(\w+)\s*(--\s*"([^"]*)"\s*)?(-->|==>|-\.->|<-->|<\-\.->|<==>|---)\s*(\|"([^"]*)"\|)?\s*(\w+)/g;
+    let em;
+    while ((em = edgeRe.exec(line)) !== null) {
+      const src = em[1], label1 = em[3] || '', op = em[4], label2 = em[6] || '', tgt = em[7];
+      if (op === '~~~') continue;
+      const label = label1 || label2;
+      let type = 'solid';
+      if (op === '==>' || op === '<==>') type = 'thick';
+      else if (op === '-.->' || op === '<-.->') type = 'dashed';
+      else if (op === '---') type = 'none';
+      const key = src + '->' + tgt;
+      if (!edgeSet.has(key)) {
+        edgeSet.add(key);
+        var ed = { id: 'e' + edges.length, source: src, target: tgt, label: label, type: type };
+        if (op === '<-->' || op === '<-.->' || op === '<==>') ed.bidirectional = true;
+        edges.push({ data: ed });
+      }
+      const tgtStart = em[0].lastIndexOf(tgt);
+      if (tgtStart > 0) edgeRe.lastIndex = em.index + tgtStart;
+    }
+  }
+
+  // Parse subgraph hierarchy — stack-based line-by-line (handles nested subgraphs correctly)
+  const subgraphs = {};
+  const parentMap = {};
+  const stack = [];
+
+  const textLines = mermaidText.split('\n');
+  for (let i = 0; i < textLines.length; i++) {
+    const line = textLines[i].trim();
+
+    // Check for subgraph definition: subgraph ID["label"] or subgraph ID['label']
+    const sgMatch = line.match(/^\s*subgraph\s+(\w+)\s*\[("|')([\s\S]*?)("|')\]\s*$/);
+    if (sgMatch) {
+      const sgId = sgMatch[1], sgLabel = sgMatch[3].replace(/<br\/?>/g, '\n');
+      subgraphs[sgId] = { id: sgId, label: sgLabel, children: [] };
+      if (stack.length > 0) {
+        const parentId = stack[stack.length - 1];
+        parentMap[sgId] = parentId;
+        subgraphs[parentId].children.push(sgId);
+      }
+      stack.push(sgId);
+      continue;
+    }
+
+    // Check for end of subgraph
+    if (/^\s*end\s*$/.test(line)) {
+      if (stack.length > 0) stack.pop();
+      continue;
+    }
+
+    // Skip directive / classDef / class assignment lines
+    if (/^\s*(flowchart|direction|classDef|class\s)/.test(line)) continue;
+
+    // Find node definitions on this line (ID["…"] or ID['…'])
+    const nodeDefRe = /(\w+)\s*\[("|')/g;
+    let ndMatch;
+    while ((ndMatch = nodeDefRe.exec(line)) !== null) {
+      const nid = ndMatch[1];
+      if (stack.length > 0) {
+        const currentParent = stack[stack.length - 1];
+        parentMap[nid] = currentParent;
+        if (!subgraphs[currentParent].children.includes(nid)) {
+          subgraphs[currentParent].children.push(nid);
+        }
+      }
+    }
+  }
+
+  // Add / override subgraph compound nodes (merge with nodeRe results to avoid duplicates)
+  Object.values(subgraphs).forEach(sg => {
+    const existingIdx = nodes.findIndex(n => n.data.id === sg.id);
+    if (existingIdx >= 0) {
+      nodes[existingIdx].classes = 'subgraph';
+      nodes[existingIdx].data.cls = '__subgraph';
+      nodes[existingIdx].data.label = sg.label;
+    } else {
+      nodes.push({ data: { id: sg.id, label: sg.label, cls: '__subgraph' }, classes: 'subgraph' });
+    }
+  });
+
+  // Set parent for child nodes (both leaf nodes and nested subgraph compounds)
+  nodes.forEach(n => {
+    if (parentMap[n.data.id]) {
+      n.data.parent = parentMap[n.data.id];
+    }
+  });
+
+  // Mark leaf nodes inside MAIN with black-border class (d0 only)
+  function isMainDescendant(nid) {
+    let cur = parentMap[nid];
+    while (cur) {
+      if (cur === 'MAIN') return true;
+      cur = parentMap[cur];
+    }
+    return false;
+  }
+  nodes.forEach(n => {
+    if (isMainDescendant(n.data.id)) {
+      n.classes = (n.classes ? n.classes + ' ' : '') + 'in-main';
+    }
+  });
+
+  // Detect direction
+  const isLR = mermaidText.trim().startsWith('flowchart LR');
+
+  return { nodes, edges, classDefs, classAssigns, nodeMap, subgraphs, parentMap, isLR };
+}
+
+/* ═════════════════════════════════════════════
+   STYLE MAPPING: Mermaid classDef → Cytoscape style
+   ═════════════════════════════════════════════ */
+function buildCyStyle() {
+  return [
+    { selector: 'node', style: {
+      'label': 'data(label)', 'text-wrap': 'wrap', 'text-max-width': '280px',
+      'text-valign': 'center', 'text-halign': 'center',
+      'shape': 'round-rectangle', 'width': 'label', 'height': 'label',
+      'padding': '12px', 'font-size': '12px', 'font-family': '"Microsoft YaHei","PingFang SC",sans-serif',
+      'background-color': '#fff', 'border-color': '#64748b', 'border-width': 1,
+      'color': '#1e293b', 'text-justification': 'left',
+    }},
+    { selector: 'node.subgraph', style: {
+      'background-color': '#fff', 'border-color': '#94a3b8',
+      'border-width': 2, 'border-style': 'dashed', 'text-valign': 'top', 'text-halign': 'center',
+      'font-size': '14px', 'font-weight': 'bold', 'padding': '20px',
+    }},
+    { selector: 'node[cls="erpCore"]', style: {
+      'background-color': '#1a237e', 'border-color': '#ffd600', 'color': '#fff', 'border-width': 3,
+    }},
+    { selector: 'node[cls="srmBlock"]', style: {
+      'background-color': '#c62828', 'border-color': '#ffab91', 'color': '#fff',
+    }},
+    { selector: 'node[cls="crmBlock"]', style: {
+      'background-color': '#00695c', 'border-color': '#80cbc4', 'color': '#fff',
+    }},
+    { selector: 'node[cls="momBlock"]', style: {
+      'background-color': '#e65100', 'border-color': '#ffcc80', 'color': '#fff',
+    }},
+    { selector: 'node[cls="wmsNode"]', style: {
+      'background-color': '#bf360c', 'border-color': '#ffab91', 'color': '#fff',
+    }},
+    { selector: 'node[cls="mesNode"]', style: {
+      'background-color': '#f57f17', 'border-color': '#ffe082', 'color': '#1e293b',
+    }},
+    { selector: 'node[cls="qmsNode"]', style: {
+      'background-color': '#2e7d32', 'border-color': '#a5d6a7', 'color': '#fff',
+    }},
+    { selector: 'node[cls="suppNode"]', style: {
+      'background-color': '#6a1b9a', 'border-color': '#ce93d8', 'color': '#fff',
+    }},
+    { selector: 'node[cls="extNode"]', style: {
+      'background-color': '#37474f', 'border-color': '#90a4ae', 'color': '#fff', 'border-style': 'dashed',
+    }},
+    // Generic class styles (used in d1-d7)
+    { selector: 'node[cls="erp"]', style: { 'background-color':'#1a237e','border-color':'#ffd600','color':'#fff','border-width':3 }},
+    { selector: 'node[cls="srm"]', style: { 'background-color':'#c62828','border-color':'#ffab91','color':'#fff' }},
+    { selector: 'node[cls="crm"]', style: { 'background-color':'#004d40','border-color':'#80cbc4','color':'#fff' }},
+    { selector: 'node[cls="wms"]', style: { 'background-color':'#bf360c','border-color':'#ffab91','color':'#fff' }},
+    { selector: 'node[cls="mes"]', style: { 'background-color':'#f57f17','border-color':'#ffe082','color':'#1e293b' }},
+    { selector: 'node[cls="qms"]', style: { 'background-color':'#2e7d32','border-color':'#a5d6a7','color':'#fff' }},
+    { selector: 'node[cls="lims"]', style: { 'background-color':'#00695c','border-color':'#80cbc4','color':'#fff' }},
+    { selector: 'node[cls="check"]', style: { 'background-color':'#2e7d32','border-color':'#a5d6a7','color':'#fff' }},
+    { selector: 'node[cls="scada"]', style: { 'background-color':'#37474f','border-color':'#90a4ae','color':'#fff','border-style':'dashed' }},
+    { selector: 'node[cls="ext"]', style: { 'background-color':'#37474f','border-color':'#90a4ae','color':'#fff','border-style':'dashed' }},
+    { selector: 'node[cls="tms"]', style: { 'background-color':'#37474f','border-color':'#90a4ae','color':'#fff' }},
+    { selector: 'node[cls="trace"]', style: { 'background-color':'#4a148c','border-color':'#ce93d8','color':'#fff' }},
+    { selector: 'node[cls="supp"]', style: { 'background-color':'#6a1b9a','border-color':'#ce93d8','color':'#fff' }},
+    { selector: 'node[cls="env"]', style: { 'background-color':'#0d7377','border-color':'#80cbc4','color':'#fff' }},
+    { selector: 'node[cls="hr"]', style: { 'background-color':'#b8860b','border-color':'#ffe082','color':'#1e293b' }},
+    { selector: 'node[cls="val"]', style: { 'background-color':'#4a148c','border-color':'#ce93d8','color':'#fff' }},
+    { selector: 'node[cls="core"]', style: { 'background-color':'#1a237e','border-color':'#ffd600','color':'#fff','border-width':3 }},
+    { selector: 'node[cls="eam"]', style: { 'background-color':'#6a1b9a','border-color':'#ce93d8','color':'#fff' }},
+    { selector: 'node[cls="ems"]', style: { 'background-color':'#0d7377','border-color':'#80cbc4','color':'#fff' }},
+    { selector: 'node[cls="data"]', style: { 'background-color':'#ff8f00','border-color':'#ffe082','color':'#1e293b' }},
+    { selector: 'node.in-main', style: { 'border-color': '#000', 'border-width': 2 }},
+    // Edges
+    { selector: 'edge', style: {
+      'width': 1.5, 'line-color': '#64748b', 'target-arrow-color': '#64748b',
+      'target-arrow-shape': 'triangle', 'curve-style': 'bezier',
+      'label': 'data(label)', 'text-rotation': 'autorotate', 'font-size': '11px', 'color': '#94a3b8',
+      'text-background-color': '#0f172a', 'text-background-opacity': 0.8, 'text-background-padding': '2px',
+      'edge-text-rotation': 'autorotate',
+    }},
+    { selector: 'edge[type="thick"]', style: { 'width': 3 }},
+    { selector: 'edge[type="dashed"]', style: { 'line-style': 'dashed', 'line-dash-pattern': [8, 6] }},
+    { selector: 'edge[bidirectional]', style: { 'source-arrow-color': '#64748b', 'source-arrow-shape': 'triangle' }},
+    { selector: 'edge[type="none"]', style: { 'target-arrow-shape': 'none' }},
+  ];
+}
+
+/* ═════════════════════════════════════════════
+   STATE
+   ═════════════════════════════════════════════ */
+let cy = null;
+let currentDiagram = 'd0';
+let isEditMode = false;
+let textEditEl = null;
+let currentParsed = null;
+let deletedNodeIds = [];
+let deletedEdgeIds = [];
+
+function storageKey(id) { return 'cy6_' + id; }
+
+function saveState() {
+  if (!cy) return;
+  const state = { positions: {}, labels: {}, edges: [], nodeDefs: [], deletedNodeIds: deletedNodeIds.slice(), deletedEdgeIds: deletedEdgeIds.slice() };
+  cy.nodes().forEach(n => {
+    state.positions[n.id()] = n.position();
+    state.labels[n.id()] = n.data('label') || '';
+    state.nodeDefs.push({
+      id: n.id(),
+      label: n.data('label') || '',
+      cls: n.data('cls') || '',
+      parent: n.data('parent') || null,
+      classes: n.classes() || ''
+    });
+  });
+  cy.edges().forEach(e => {
+    var ed = {
+      id: e.id(), source: e.data('source'), target: e.data('target'),
+      label: e.data('label') || '', type: e.data('type') || 'solid'
+    };
+    if (e.data('bidirectional')) ed.bidirectional = true;
+    state.edges.push(ed);
+  });
+  try {
+    localStorage.setItem(storageKey(currentDiagram), JSON.stringify(state));
+    localStorage.setItem('cy6_lastDiagram', currentDiagram);
+  } catch(e) {}
+}
+
+function loadState(id) {
+  try {
+    const data = localStorage.getItem(storageKey(id));
+    return data ? JSON.parse(data) : null;
+  } catch(e) { return null; }
+}
+
+/* ═════════════════════════════════════════════
+   CYTOSCAPE INIT
+   ═════════════════════════════════════════════ */
+function initCy(container, elements, isLR) {
+  if (cy) cy.destroy();
+
+  cy = cytoscape({
+    container: container,
+    elements: elements,
+    style: buildCyStyle(),
+    layout: {
+      name: 'dagre',
+      rankDir: isLR ? 'LR' : 'TB',
+      spacingFactor: 1.3,
+      nodeSep: 40,
+      edgeSep: 20,
+      rankSep: 80,
+      animate: false,
+    },
+    wheelSensitivity: 0.3,
+    minZoom: 0.1,
+    maxZoom: 4,
+  });
+
+  // Apply saved state (positions + labels + edges + node CRUD)
+  const saved = loadState(currentDiagram);
+  if (saved) {
+    // Restore deleted-node/edge tracking
+    deletedNodeIds = saved.deletedNodeIds || [];
+    deletedEdgeIds = saved.deletedEdgeIds || [];
+
+    cy.ready(() => {
+      // Build set of saved node IDs for add/delete tracking
+      var savedNodeIds = {};
+      if (saved.nodeDefs) {
+        saved.nodeDefs.forEach(function(nd) { savedNodeIds[nd.id] = nd; });
+      }
+
+      // Remove nodes explicitly deleted by user (tracked in deletedNodeIds)
+      if (deletedNodeIds.length > 0) {
+        deletedNodeIds.forEach(function(id) {
+          var n = cy.getElementById(id);
+          if (n.length) n.remove();
+        });
+      }
+
+      // Add nodes created by user (exist in saved state but not in cy)
+      var existingIds = {};
+      cy.nodes().forEach(function(n) { existingIds[n.id()] = true; });
+      if (saved.nodeDefs) {
+        saved.nodeDefs.forEach(function(nd) {
+          if (!existingIds[nd.id] && !deletedNodeIds.includes(nd.id)) {
+            cy.add({
+              group: 'nodes',
+              data: { id: nd.id, label: nd.label, cls: nd.cls || '', parent: nd.parent || undefined },
+              classes: nd.classes || (nd.cls === '__subgraph' ? 'subgraph' : '')
+            });
+          }
+        });
+      }
+
+      // Apply positions and labels
+      cy.nodes().forEach(function(n) {
+        if (saved.positions && saved.positions[n.id()]) n.position(saved.positions[n.id()]);
+        if (saved.labels && saved.labels[n.id()]) n.data('label', saved.labels[n.id()]);
+      });
+
+      // Merge edges: remove deleted, add saved, then add new parsed edges not in saved
+      if (deletedEdgeIds.length > 0) {
+        deletedEdgeIds.forEach(function(id) {
+          var e = cy.getElementById(id);
+          if (e.length) e.remove();
+        });
+      }
+      if (saved.edges && saved.edges.length > 0) {
+        // Remove edges NOT in saved state (but keep new parsed edges)
+        var savedEdgeIds = {};
+        saved.edges.forEach(function(ed) { savedEdgeIds[ed.id] = true; });
+        cy.edges().forEach(function(e) {
+          if (!savedEdgeIds[e.id()] && !deletedEdgeIds.includes(e.id())) {
+            // Edge was parsed fresh but not in saved state — could be a new source edge.
+            // Keep it if it came from the current parse (currentParsed).
+            var fromParse = currentParsed && currentParsed.edges.some(function(pe) { return pe.data.id === e.id(); });
+            if (!fromParse) e.remove();
+          }
+        });
+        // Add/update edges from saved state (skip deleted)
+        saved.edges.forEach(function(ed) {
+          if (deletedEdgeIds.includes(ed.id)) return;
+          var existing = cy.getElementById(ed.id);
+          if (existing.length) {
+            existing.data('type', ed.type || 'solid');
+            existing.data('label', ed.label || '');
+            if (ed.bidirectional) existing.data('bidirectional', true);
+            else existing.removeData('bidirectional');
+          } else {
+            cy.add({ group: 'edges', data: ed });
+          }
+        });
+      }
+
+      // Update grab state for edit mode
+      updateNodeGrab();
+    });
+  } else {
+    deletedNodeIds = [];
+    deletedEdgeIds = [];
+  }
+
+  // Events
+  cy.on('dragfree', 'node', saveState);
+  cy.on('dblclick', 'node', onNodeDblClick);
+  cy.on('dblclick', 'edge', (evt) => { showEdgePanel(evt.target); });
+  cy.on('tap', 'edge', (evt) => { if (isEditMode) showEdgePanel(evt.target); });
+  cy.on('zoom', updateZoomLabel);
+  cy.on('tap', (e) => {
+    if (e.target === cy) {
+      if (textEditEl) finishTextEdit();
+      if (edgePanelEl) hideEdgePanel();
+    }
+  });
+
+  updateNodeGrab();
+}
+
+function updateNodeGrab() {
+  if (!cy) return;
+  cy.nodes().forEach(n => {
+    if (n.hasClass('subgraph')) {
+      n.grabbable(false);
+    } else {
+      n.grabbable(isEditMode);
+    }
+  });
+  if (isEditMode) {
+    cy.userPanningEnabled(true);
+    cy.userZoomingEnabled(true);
+  }
+}
+
+/* ═════════════════════════════════════════════
+   TEXT EDITING
+   ═════════════════════════════════════════════ */
+function onNodeDblClick(evt) {
+  if (!isEditMode) return;
+  const node = evt.target;
+  if (node.hasClass('subgraph')) return;
+
+  if (textEditEl) finishTextEdit();
+
+  const renderedPos = node.renderedPosition();
+  const label = node.data('label') || '';
+
+  textEditEl = document.createElement('div');
+  textEditEl.className = 'text-editor';
+  textEditEl.contentEditable = 'true';
+  textEditEl.innerHTML = label.replace(/\n/g, '<br/>');
+  textEditEl.setAttribute('data-node-id', node.id());
+  textEditEl.style.left = renderedPos.x + 'px';
+  textEditEl.style.top = renderedPos.y + 'px';
+  document.getElementById('cy').parentElement.appendChild(textEditEl);
+
+  textEditEl.addEventListener('blur', finishTextEdit);
+  textEditEl.addEventListener('keydown', (e) => {
+    if (e.key === 'Escape') { textEditEl.innerHTML = label.replace(/\n/g, '<br/>'); finishTextEdit(); }
+    if (e.key === 'Enter' && e.ctrlKey) finishTextEdit();
+  });
+  textEditEl.focus();
+}
+
+function finishTextEdit() {
+  if (!textEditEl) return;
+  const nid = textEditEl.getAttribute('data-node-id');
+  const newLabel = textEditEl.innerHTML.replace(/<br\/?>/g, '\n').replace(/&nbsp;/g, ' ');
+  textEditEl.remove();
+  textEditEl = null;
+  if (nid && cy) {
+    const node = cy.getElementById(nid);
+    if (node.length && newLabel !== node.data('label')) {
+      node.data('label', newLabel);
+      saveState();
+      toast('✅ 文字已更新');
+    }
+  }
+}
+
+
+/* ═════════════════════════════════════════════
+   EDGE EDITING
+   ═════════════════════════════════════════════ */
+let edgePanelEl = null;
+let currentEdge = null;
+
+function escHtml(s) { return (s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;'); }
+
+function hideEdgePanel() {
+  if (edgePanelEl) { edgePanelEl.remove(); edgePanelEl = null; currentEdge = null; }
+}
+
+function showEdgePanel(edge) {
+  hideEdgePanel();
+  if (textEditEl) finishTextEdit();
+  currentEdge = edge;
+
+  const src = edge.data('source');
+  const tgt = edge.data('target');
+  const label = edge.data('label') || '';
+  const type = edge.data('type') || 'solid';
+
+  const mid = edge.midpoint();
+  const pan = cy.pan();
+  const zoom = cy.zoom();
+  const cyEl = document.getElementById('cy');
+  const rect = cyEl.getBoundingClientRect();
+  const x = rect.left + mid.x * zoom + pan.x * zoom;
+  const y = rect.top + mid.y * zoom + pan.y * zoom;
+
+  var isBidir = !!edge.data('bidirectional');
+
+  edgePanelEl = document.createElement('div');
+  edgePanelEl.className = 'edge-panel';
+  edgePanelEl.innerHTML =
+    '<div class="edge-panel-title">编辑连线</div>' +
+    '<div class="edge-panel-row"><b>' + escHtml(src) + '</b> → <b>' + escHtml(tgt) + '</b></div>' +
+    '<select class="edge-panel-type">' +
+      '<option value="solid"' + (type==='solid'?' selected':'') + '>实线</option>' +
+      '<option value="thick"' + (type==='thick'?' selected':'') + '>粗线</option>' +
+      '<option value="dashed"' + (type==='dashed'?' selected':'') + '>虚线</option>' +
+    '</select>' +
+    '<label class="edge-panel-check"><input type="checkbox" class="edge-panel-bidir"' + (isBidir?' checked':'') + '> 双向箭头</label>' +
+    '<input class="edge-panel-label" placeholder="标签文字" value="' + escHtml(label) + '"/>' +
+    '<div class="edge-panel-btns">' +
+      '<button class="edge-panel-save">💾 保存</button>' +
+      '<button class="edge-panel-delete">🗑️ 删除</button>' +
+      '<button class="edge-panel-cancel">取消</button>' +
+    '</div>';
+
+  edgePanelEl.style.left = Math.max(10, Math.min(x, window.innerWidth - 260)) + 'px';
+  edgePanelEl.style.top = Math.max(10, y - 120) + 'px';
+
+  document.body.appendChild(edgePanelEl);
+
+  edgePanelEl.querySelector('.edge-panel-save').onclick = function() {
+    var newType = edgePanelEl.querySelector('.edge-panel-type').value;
+    var newBidir = edgePanelEl.querySelector('.edge-panel-bidir').checked;
+    var newLabel = edgePanelEl.querySelector('.edge-panel-label').value.trim();
+    edge.data('type', newType);
+    edge.data('label', newLabel);
+    if (newBidir) edge.data('bidirectional', true);
+    else edge.removeData('bidirectional');
+    saveState();
+    hideEdgePanel();
+    toast('✅ 连线已更新');
+  };
+
+  edgePanelEl.querySelector('.edge-panel-delete').onclick = function() {
+    if (confirm('确定删除连线 ' + src + ' → ' + tgt + '？')) {
+      deletedEdgeIds.push(currentEdge.id());
+      currentEdge.remove();
+      saveState();
+      hideEdgePanel();
+      toast('🗑️ 连线已删除');
+    }
+  };
+
+  edgePanelEl.querySelector('.edge-panel-cancel').onclick = hideEdgePanel;
+}
+
+function showAddEdgePanel() {
+  hideEdgePanel();
+  if (textEditEl) finishTextEdit();
+
+  var nodeIds = cy.nodes().map(function(n) { return n.id(); }).sort();
+  var opts = nodeIds.map(function(id) {
+    var node = cy.getElementById(id);
+    var label = (node.data('label') || '');
+    var shortLabel = label.replace(/<br\/?>/g,' ').replace(/\n/g,' ').substring(0, 36);
+    if (shortLabel.length < label.replace(/<br\/?>/g,' ').replace(/\n/g,' ').length) shortLabel += '…';
+    return '<option value="' + id + '">' + escHtml(id) + ' — ' + escHtml(shortLabel) + '</option>';
+  }).join('');
+
+  edgePanelEl = document.createElement('div');
+  edgePanelEl.className = 'edge-panel';
+  edgePanelEl.innerHTML =
+    '<div class="edge-panel-title">新增连线</div>' +
+    '<select class="edge-panel-src">' + opts + '</select>' +
+    '<div style="text-align:center;padding:4px 0;color:#94a3b8;">↓</div>' +
+    '<select class="edge-panel-tgt">' + opts + '</select>' +
+    '<select class="edge-panel-type">' +
+      '<option value="solid">实线</option>' +
+      '<option value="thick">粗线</option>' +
+      '<option value="dashed">虚线</option>' +
+    '</select>' +
+    '<label class="edge-panel-check"><input type="checkbox" class="edge-panel-bidir"> 双向箭头</label>' +
+    '<input class="edge-panel-label" placeholder="标签文字（可选）"/>' +
+    '<div class="edge-panel-btns">' +
+      '<button class="edge-panel-add">➕ 添加</button>' +
+      '<button class="edge-panel-cancel">取消</button>' +
+    '</div>';
+
+  edgePanelEl.style.left = '50%';
+  edgePanelEl.style.top = '120px';
+  edgePanelEl.style.transform = 'translateX(-50%)';
+
+  document.body.appendChild(edgePanelEl);
+
+  edgePanelEl.querySelector('.edge-panel-add').onclick = function() {
+    var src = edgePanelEl.querySelector('.edge-panel-src').value;
+    var tgt = edgePanelEl.querySelector('.edge-panel-tgt').value;
+    var type = edgePanelEl.querySelector('.edge-panel-type').value;
+    var bidir = edgePanelEl.querySelector('.edge-panel-bidir').checked;
+    var label = edgePanelEl.querySelector('.edge-panel-label').value.trim();
+
+    if (src === tgt) { toast('⚠️ 源和目标不能相同'); return; }
+    var exists = cy.edges().some(function(e) { return e.data('source') === src && e.data('target') === tgt; });
+    if (exists) { toast('⚠️ 该连线已存在'); return; }
+
+    var data = {
+      id: src + '_' + tgt + '_' + Date.now(),
+      source: src, target: tgt, label: label, type: type
+    };
+    if (bidir) data.bidirectional = true;
+    cy.add({ group: 'edges', data: data });
+    saveState();
+    hideEdgePanel();
+    toast('✅ 连线已添加');
+  };
+
+  edgePanelEl.querySelector('.edge-panel-cancel').onclick = hideEdgePanel;
+}
+
+function showAddNodePanel() {
+  hideEdgePanel();
+  if (textEditEl) finishTextEdit();
+
+  // Collect available parent subgraphs
+  var subgraphIds = cy.nodes().filter(function(n) { return n.hasClass('subgraph'); }).map(function(n) { return n.id(); }).sort();
+  var parentOpts = '<option value="">— 无（顶层节点）—</option>' +
+    subgraphIds.map(function(id) {
+      var node = cy.getElementById(id);
+      var label = (node.data('label') || id).replace(/\n/g,' ').substring(0, 50);
+      return '<option value="' + id + '">' + escHtml(id) + ' — ' + escHtml(label) + '</option>';
+    }).join('');
+
+  var styleOpts = [
+    { v: '', t: '默认（白底黑字）' },
+    { v: 'erp', t: 'ERP核心（深蓝·金边）' },
+    { v: 'srm', t: 'SRM供应商（红色）' },
+    { v: 'crm', t: 'CRM客户（深绿）' },
+    { v: 'wms', t: 'WMS仓储（深橙）' },
+    { v: 'mes', t: 'MES制造（琥珀）' },
+    { v: 'qms', t: 'QMS质量（绿色）' },
+    { v: 'lims', t: 'LIMS检验（青色）' },
+    { v: 'supp', t: '支撑保障（紫色）' },
+    { v: 'ext', t: '外部系统（深灰·虚线）' },
+    { v: 'erpCore', t: 'ERP核心枢纽（深蓝·金边·粗框）' },
+    { v: 'srmBlock', t: 'SRM模块（红）' },
+    { v: 'crmBlock', t: 'CRM模块（青绿）' },
+    { v: 'momBlock', t: 'MOM模块（橙）' },
+    { v: 'wmsNode', t: 'WMS节点（深红）' },
+    { v: 'mesNode', t: 'MES节点（琥珀·深字）' },
+    { v: 'qmsNode', t: 'QMS节点（深绿）' },
+    { v: 'suppNode', t: '支撑节点（紫）' },
+    { v: 'extNode', t: '外部节点（灰·虚线）' },
+    { v: 'core', t: '核心（深蓝·金边）' },
+    { v: 'check', t: '校验节点（绿）' },
+    { v: 'scada', t: 'SCADA（灰·虚线）' },
+    { v: 'tms', t: 'TMS运输（灰）' },
+    { v: 'trace', t: '追溯（深紫）' },
+    { v: 'env', t: '环境监控（青）' },
+    { v: 'hr', t: 'HR人员（金）' },
+    { v: 'val', t: '验证（深紫）' },
+    { v: 'eam', t: 'EAM设备（紫）' },
+    { v: 'ems', t: 'EMS环境（青）' },
+    { v: 'data', t: '数据资产（橙·深字）' },
+  ].map(function(s) {
+    return '<option value="' + s.v + '">' + s.t + '</option>';
+  }).join('');
+
+  edgePanelEl = document.createElement('div');
+  edgePanelEl.className = 'edge-panel';
+  edgePanelEl.innerHTML =
+    '<div class="edge-panel-title">新增实体（节点）</div>' +
+    '<input class="edge-panel-label" id="newNodeId" placeholder="节点ID（英文·数字·下划线，如 MY_NODE）" style="font-family:monospace;font-size:.75rem"/>' +
+    '<textarea class="edge-panel-label" id="newNodeLabel" placeholder="标签文字（换行=Shift+Enter，或使用 &lt;br/&gt;）" rows="4" style="resize:vertical;min-height:70px;font-family:inherit"></textarea>' +
+    '<div class="edge-panel-row" style="font-size:.72rem;color:#94a3b8;">选择父容器（可选）</div>' +
+    '<select class="edge-panel-type" id="newNodeParent">' + parentOpts + '</select>' +
+    '<div class="edge-panel-row" style="font-size:.72rem;color:#94a3b8;">选择视觉样式</div>' +
+    '<select class="edge-panel-type" id="newNodeCls">' + styleOpts + '</select>' +
+    '<div class="edge-panel-btns">' +
+      '<button class="edge-panel-add">➕ 添加实体</button>' +
+      '<button class="edge-panel-cancel">取消</button>' +
+    '</div>';
+
+  edgePanelEl.style.left = '50%';
+  edgePanelEl.style.top = '120px';
+  edgePanelEl.style.transform = 'translateX(-50%)';
+
+  document.body.appendChild(edgePanelEl);
+
+  edgePanelEl.querySelector('.edge-panel-add').onclick = function() {
+    var nid = edgePanelEl.querySelector('#newNodeId').value.trim();
+    var nlabel = edgePanelEl.querySelector('#newNodeLabel').value.trim();
+    var nparent = edgePanelEl.querySelector('#newNodeParent').value;
+    var ncls = edgePanelEl.querySelector('#newNodeCls').value;
+
+    if (!nid) { toast('⚠️ 请输入节点ID'); return; }
+    if (!/^[a-zA-Z_][\w]*$/.test(nid)) { toast('⚠️ 节点ID只能包含英文、数字、下划线，且以英文或下划线开头'); return; }
+    if (!nlabel) { toast('⚠️ 请输入标签文字'); return; }
+    if (cy.getElementById(nid).length) { toast('⚠️ 该节点ID已存在'); return; }
+
+    nlabel = nlabel.replace(/\n/g, '<br/>');
+
+    cy.add({
+      group: 'nodes',
+      data: { id: nid, label: nlabel, cls: ncls, parent: nparent || undefined },
+      classes: ncls === '__subgraph' ? 'subgraph' : ''
+    });
+
+    if (isEditMode) {
+      cy.nodes().forEach(function(n) {
+        if (n.hasClass('subgraph')) n.grabbable(false);
+        else n.grabbable(true);
+      });
+    }
+
+    saveState();
+    hideEdgePanel();
+    toast('✅ 实体 ' + nid + ' 已添加');
+  };
+
+  edgePanelEl.querySelector('.edge-panel-cancel').onclick = hideEdgePanel;
+
+  // Focus the ID input
+  setTimeout(function() {
+    var idInput = edgePanelEl.querySelector('#newNodeId');
+    if (idInput) idInput.focus();
+  }, 100);
+}
+
+
+/* ═════════════════════════════════════════════
+   UI
+   ═════════════════════════════════════════════ */
+function toast(msg) {
+  const el = document.getElementById('toast');
+  el.textContent = msg;
+  el.classList.add('show');
+  setTimeout(() => el.classList.remove('show'), 2500);
+}
+
+async function renderDiagram(id) {
+  const mermaidText = diagramSources[id];
+  if (!mermaidText) return;
+  currentParsed = parseMermaidDiagram(mermaidText);
+
+  // Convert to Cytoscape elements
+  const elements = [...currentParsed.nodes, ...currentParsed.edges];
+
+  initCy(document.getElementById('cy'), elements, currentParsed.isLR);
+  document.getElementById('statusBadge').textContent = 'v6.0 | ' + (isEditMode ? '编辑中 ✏️' : '预览中 👁️');
+  updateZoomLabel();
+}
+
+async function switchDiagram(btn) {
+  const newId = btn.dataset.diagram;
+  if (newId === currentDiagram && btn.classList.contains('active')) return;
+
+  if (textEditEl) finishTextEdit();
+  if (edgePanelEl) hideEdgePanel();
+  saveState();
+
+  document.querySelectorAll('.sidebar .tab').forEach(t => t.classList.remove('active'));
+  btn.classList.add('active');
+  currentDiagram = newId;
+
+  await renderDiagram(newId);
+}
+
+function toggleEdit() {
+  if (textEditEl) finishTextEdit();
+  if (edgePanelEl) hideEdgePanel();
+  isEditMode = !isEditMode;
+  const btn = document.getElementById('btnEdit');
+  const addEdgeBtn = document.getElementById('btnAddEdge');
+  const addNodeBtn = document.getElementById('btnAddNode');
+
+  if (isEditMode) {
+    btn.textContent = '👁️ 预览模式';
+    btn.style.background = 'var(--success)';
+    addEdgeBtn.style.display = 'inline-block';
+    addNodeBtn.style.display = 'inline-block';
+    toast('✏️ 编辑模式：拖拽移动节点，双击编辑文字/连线，Delete删除选中，新增实体/连线');
+  } else {
+    btn.textContent = '✏️ 编辑模式';
+    btn.style.background = 'var(--btn-bg)';
+    addEdgeBtn.style.display = 'none';
+    addNodeBtn.style.display = 'none';
+    saveState();
+    toast('👁️ 预览模式');
+  }
+  updateNodeGrab();
+  document.getElementById('statusBadge').textContent = 'v6.0 | ' + (isEditMode ? '编辑中 ✏️' : '预览中 👁️');
+}
+
+function resetDiagram() {
+  if (!confirm('确定恢复「' + currentDiagram + '」为默认布局？编辑的文字不会丢失。')) return;
+  try { localStorage.removeItem(storageKey(currentDiagram)); } catch(e) {}
+  renderDiagram(currentDiagram);
+  toast('↺ 布局已重置');
+}
+
+function zoomCy(action) {
+  if (!cy) return;
+  if (action === 'fit') { cy.fit(null, 40); }
+  else if (action === 'reset') { cy.zoom(1); cy.center(); }
+  else { cy.zoom(cy.zoom() * action); }
+  updateZoomLabel();
+}
+
+function updateZoomLabel() {
+  if (!cy) return;
+  document.getElementById('zoomLabel').textContent = Math.round(cy.zoom() * 100) + '%';
+}
+
+/* ═════════════════════════════════════════════
+   EXPORT
+   ═════════════════════════════════════════════ */
+function downloadDrawio() {
+  if (!cy || !currentParsed) return;
+  saveState();
+
+  const classDefs = currentParsed.classDefs;
+  const nodeMap = currentParsed.nodeMap;
+
+  function esc(raw) {
+    return (raw||'').replace(/&/g, '&amp;').replace(/"/g, '&quot;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+  }
+  function styleStr(def) {
+    if (!def) return 'rounded=1;whiteSpace=wrap;html=1;';
+    const p = ['rounded=1', 'whiteSpace=wrap', 'html=1'];
+    if (def.fill) p.push('fillColor=' + def.fill);
+    if (def.stroke) p.push('strokeColor=' + def.stroke);
+    if (def.color) p.push('fontColor=' + def.color);
+    if (def.sw) p.push('strokeWidth=' + def.sw);
+    if (def.dashed) p.push('dashed=1');
+    return p.join(';') + ';';
+  }
+
+  let xml = `<mxGraphModel dx="0" dy="0" grid="1" gridSize="10" guides="1" tooltips="1" connect="1" arrows="1" fold="1" page="1" pageScale="1" pageWidth="1600" pageHeight="1200">
+  <root>
+    <mxCell id="0"/>
+    <mxCell id="1" parent="0"/>
+`;
+  let counter = 2;
+  const idMap = {};
+
+  cy.nodes().forEach(n => {
+    const nid = n.id();
+    const pos = n.position();
+    const label = n.data('label') || '';
+    const cid = 'cell-' + (counter++);
+    idMap[nid] = cid;
+    const info = nodeMap[nid] || {};
+    xml += `    <mxCell id="${cid}" value="${esc(label)}" style="${styleStr(info.styleDef)}" vertex="1" parent="1">
+      <mxGeometry x="${Math.round(pos.x)}" y="${Math.round(pos.y)}" width="180" height="80" as="geometry"/>
+    </mxCell>
+`;
+  });
+
+  cy.edges().forEach(e => {
+    const src = idMap[e.data('source')], tgt = idMap[e.data('target')];
+    if (!src || !tgt) return;
+    const cid = 'cell-' + (counter++);
+    let es = 'edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;';
+    const type = e.data('type') || 'solid';
+    if (type === 'dashed') es += 'dashed=1;dashPattern=8 8;';
+    else if (type === 'thick') es += 'strokeWidth=3;';
+    es += 'endArrow=classic;';
+    if (type === 'bidirectional') es += 'startArrow=classic;';
+    xml += `    <mxCell id="${cid}" value="${esc(e.data('label')||'')}" style="${es}" edge="1" parent="1" source="${src}" target="${tgt}">
+      <mxGeometry relative="1" as="geometry"/>
+    </mxCell>
+`;
+  });
+
+  xml += `  </root>
+</mxGraphModel>`;
+
+  const blob = new Blob([xml], { type: 'application/xml;charset=utf-8' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = `花红药业架构图_${currentDiagram}.drawio`;
+  a.click();
+  URL.revokeObjectURL(url);
+  toast('✅ .drawio 已下载');
+}
+
+function downloadPNG() {
+  if (!cy) return;
+  const dataUrl = cy.png({ full: true, scale: 2, bg: '#ffffff' });
+  const a = document.createElement('a');
+  a.href = dataUrl;
+  a.download = `花红药业架构图_${currentDiagram}.png`;
+  a.click();
+  toast('✅ PNG 已下载');
+}
+
+function printDiagram() { window.print(); }
+
+/* ═════════════════════════════════════════════
+   KEYBOARD
+   ═════════════════════════════════════════════ */
+document.addEventListener('keydown', (e) => {
+  if (e.ctrlKey && e.key === 'e') { e.preventDefault(); toggleEdit(); }
+  if (e.ctrlKey && e.key === 's') { e.preventDefault(); downloadDrawio(); }
+  if (e.ctrlKey && e.key === '0') { e.preventDefault(); zoomCy('fit'); }
+  if (e.key === 'Escape') { e.preventDefault(); if (edgePanelEl) hideEdgePanel(); else if (isEditMode) toggleEdit(); }
+  if ((e.key === 'Delete' || e.key === 'Backspace') && isEditMode && cy && !textEditEl && !edgePanelEl) {
+    var tag = document.activeElement ? document.activeElement.tagName : '';
+    var isInput = tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT' || (document.activeElement && document.activeElement.isContentEditable);
+    if (isInput) return;
+    const sel = cy.$(':selected');
+    if (sel.length > 0) {
+      e.preventDefault();
+      if (sel.isEdge()) {
+        const desc = '连线 ' + sel.data('source') + ' → ' + sel.data('target');
+        if (confirm('确定删除 ' + desc + '？')) {
+          deletedEdgeIds.push(sel.id());
+          sel.remove();
+          saveState();
+          toast('🗑️ ' + desc + ' 已删除');
+        }
+      } else {
+        const desc = '节点 ' + sel.id();
+        if (confirm('确定删除 ' + desc + '？（关联连线将一并删除）')) {
+          deletedNodeIds.push(sel.id());
+          sel.remove();
+          saveState();
+          toast('🗑️ ' + desc + ' 已删除');
+        }
+      }
+    }
+  }
+});
+
+/* ═════════════════════════════════════════════
+   BOOT
+   ═════════════════════════════════════════════ */
+async function boot() {
+  try {
+    document.getElementById('statusBadge').textContent = 'v6.0 | 等待库加载...';
+
+    // Wait for all 3 libraries (with timeout)
+    if (typeof cytoscape === 'undefined' || typeof dagre === 'undefined' || typeof cytoscapeDagre === 'undefined') {
+      await new Promise((resolve, reject) => {
+        let waited = 0;
+        const check = () => {
+          if (typeof cytoscape !== 'undefined' && typeof dagre !== 'undefined' && typeof cytoscapeDagre !== 'undefined') {
+            cytoscape.use(cytoscapeDagre);
+            return resolve();
+          }
+          if (waited > 25000) return reject(new Error('库加载超时（dagre/cytoscape/cytoscape-dagre）'));
+          waited += 100;
+          setTimeout(check, 100);
+        };
+        check();
+      });
+    } else {
+      cytoscape.use(cytoscapeDagre);
+    }
+
+    const hash = window.location.hash.replace('#', '');
+    const startId = (hash && diagramSources[hash]) ? hash : 'd0';
+    currentDiagram = startId;
+
+    const activeBtn = document.querySelector(`[data-diagram="${startId}"]`);
+    if (activeBtn) {
+      document.querySelectorAll('.sidebar .tab').forEach(t => t.classList.remove('active'));
+      activeBtn.classList.add('active');
+    }
+
+    await renderDiagram(startId);
+    document.getElementById('statusBadge').textContent = 'v6.0 | 就绪 👁️';
+
+  } catch(e) {
+    console.error('Boot failed:', e);
+    document.getElementById('cy').innerHTML =
+      '<div style="text-align:center;color:#f87171;padding:60px;"><div style="font-size:2rem;">⚠️</div><div>初始化失败：' + e.message + '</div><div style="color:#94a3b8;margin-top:8px;">请检查网络连接后刷新（F5）</div></div>';
+    document.getElementById('statusBadge').textContent = 'v6.0 | 错误';
+  }
+}
+
+document.addEventListener('DOMContentLoaded', boot);
+</script>
+</body>
+</html>
