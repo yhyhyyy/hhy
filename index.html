@@ -117,6 +117,33 @@
     padding:6px 10px;font-size:13px;outline:none;
     box-shadow:0 4px 20px rgba(0,0,0,.25);font-family:inherit
   }
+  .edge-panel{
+    position:fixed;z-index:60;background:#1e293b;border:1px solid #475569;
+    border-radius:10px;padding:16px;box-shadow:0 8px 32px rgba(0,0,0,.5);
+    display:flex;flex-direction:column;gap:8px;min-width:240px
+  }
+  .edge-panel-title{font-size:.85rem;font-weight:600;color:#e2e8f0;margin-bottom:2px}
+  .edge-panel-row{font-size:.78rem;color:#94a3b8;word-break:break-all}
+  .edge-panel-row b{color:#f1f5f9}
+  .edge-panel-type,.edge-panel-src,.edge-panel-tgt{
+    padding:6px 8px;background:#0f172a;color:#e2e8f0;border:1px solid #475569;
+    border-radius:6px;font-size:.8rem;outline:none
+  }
+  .edge-panel-label{
+    padding:6px 8px;background:#0f172a;color:#e2e8f0;border:1px solid #475569;
+    border-radius:6px;font-size:.8rem;outline:none
+  }
+  .edge-panel-btns{display:flex;gap:6px;margin-top:2px}
+  .edge-panel-btns button{
+    flex:1;padding:6px 0;border-radius:6px;border:none;font-size:.78rem;cursor:pointer;font-weight:500
+  }
+  .edge-panel-save,.edge-panel-add{background:#2563eb;color:#fff}
+  .edge-panel-save:hover,.edge-panel-add:hover{background:#1d4ed8}
+  .edge-panel-delete{background:#dc2626;color:#fff}
+  .edge-panel-delete:hover{background:#b91c1c}
+  .edge-panel-cancel{background:#334155;color:#e2e8f0}
+  .edge-panel-cancel:hover{background:#475569}
+  .edge-panel-check{display:flex;align-items:center;gap:6px;color:#e2e8f0;font-size:.78rem;cursor:pointer}
   ::-webkit-scrollbar{width:5px}
   ::-webkit-scrollbar-track{background:transparent}
   ::-webkit-scrollbar-thumb{background:#475569;border-radius:3px}
@@ -142,6 +169,8 @@
   </div>
   <div class="actions">
     <button class="btn-edit" id="btnEdit" onclick="toggleEdit()">✏️ 编辑模式</button>
+    <button id="btnAddNode" onclick="showAddNodePanel()" style="display:none;background:#0d9488;color:#fff;border:none;border-radius:6px;padding:7px 14px;font-size:.78rem;cursor:pointer;font-weight:500">🔲 新增实体</button>
+    <button id="btnAddEdge" onclick="showAddEdgePanel()" style="display:none;background:#7c3aed;color:#fff;border:none;border-radius:6px;padding:7px 14px;font-size:.78rem;cursor:pointer;font-weight:500">➕ 新增连线</button>
     <button class="btn-dl" onclick="downloadDrawio()">📥 下载.drawio</button>
     <button onclick="downloadPNG()">🖼️ 下载PNG</button>
     <button onclick="printDiagram()">🖨️ 打印</button>
@@ -327,11 +356,13 @@ const diagramSources = {
     ENV["🌡️ 环境监控系统<br/>温湿度·虫霉·报警"]
     MES_IN["🏭 → MES 生产工单触发领料"]
     MES_OUT["🏭 MES 完工 → 半成品/成品入库"]
+    TMS_d2["🚚 TMS运输管理<br/>GPS·温控·签收"]
     ENV -.->|"实时监测"| W2
     MES_IN -->|"工单触发"| W3
     W4 -.->|"完工入库"| MES_OUT
+    TMS_d2 <-.->|"运输协同·状态回传"| W4
     class W1,W2,W3,W4 wms
-    class ENV,MES_IN,MES_OUT ext
+    class ENV,MES_IN,MES_OUT,TMS_d2 ext
 `,
   d3: `flowchart TB
     classDef mes fill:#f57f17,stroke:#ffe082,color:#1e293b
@@ -516,6 +547,7 @@ const diagramSources = {
     CRM <-->|"追溯·召回"| TRACE_SYS
     MES <-->|"设备状态"| EAM_SYS
     WMS <-->|"环境数据"| EMS_SYS
+    WMS <-.->|"运输协同"| TMS_SYS
     MES <-->|"环境数据"| EMS_SYS
     class ERP erp
     class SRM srm
@@ -581,21 +613,22 @@ function parseMermaidDiagram(mermaidText) {
     line = line.trim();
     if (!line || /^(classDef|class\s|subgraph|end|direction|flowchart)/.test(line)) continue;
     line = line.replace(/(\w+)\["[^"]*"\]/g, '$1');
-    const edgeRe = /(\w+)\s*(--\s*"([^"]*)"\s*)?(-->|==>|-\.->|<-->|---)\s*(\|"([^"]*)"\|)?\s*(\w+)/g;
+    const edgeRe = /(\w+)\s*(--\s*"([^"]*)"\s*)?(-->|==>|-\.->|<-->|<\-\.->|<==>|---)\s*(\|"([^"]*)"\|)?\s*(\w+)/g;
     let em;
     while ((em = edgeRe.exec(line)) !== null) {
       const src = em[1], label1 = em[3] || '', op = em[4], label2 = em[6] || '', tgt = em[7];
       if (op === '~~~') continue;
       const label = label1 || label2;
       let type = 'solid';
-      if (op === '==>') type = 'thick';
-      else if (op === '-.->') type = 'dashed';
-      else if (op === '<-->') type = 'bidirectional';
+      if (op === '==>' || op === '<==>') type = 'thick';
+      else if (op === '-.->' || op === '<-.->') type = 'dashed';
       else if (op === '---') type = 'none';
       const key = src + '->' + tgt;
       if (!edgeSet.has(key)) {
         edgeSet.add(key);
-        edges.push({ data: { id: 'e' + edges.length, source: src, target: tgt, label, type, bidirectional: op === '<-->' } });
+        var ed = { id: 'e' + edges.length, source: src, target: tgt, label: label, type: type };
+        if (op === '<-->' || op === '<-.->' || op === '<==>') ed.bidirectional = true;
+        edges.push({ data: ed });
       }
       const tgtStart = em[0].lastIndexOf(tgt);
       if (tgtStart > 0) edgeRe.lastIndex = em.index + tgtStart;
@@ -766,7 +799,7 @@ function buildCyStyle() {
     }},
     { selector: 'edge[type="thick"]', style: { 'width': 3 }},
     { selector: 'edge[type="dashed"]', style: { 'line-style': 'dashed', 'line-dash-pattern': [8, 6] }},
-    { selector: 'edge[type="bidirectional"]', style: { 'source-arrow-color': '#64748b', 'source-arrow-shape': 'triangle' }},
+    { selector: 'edge[bidirectional]', style: { 'source-arrow-color': '#64748b', 'source-arrow-shape': 'triangle' }},
     { selector: 'edge[type="none"]', style: { 'target-arrow-shape': 'none' }},
   ];
 }
@@ -779,15 +812,32 @@ let currentDiagram = 'd0';
 let isEditMode = false;
 let textEditEl = null;
 let currentParsed = null;
+let deletedNodeIds = [];
+let deletedEdgeIds = [];
 
 function storageKey(id) { return 'cy6_' + id; }
 
 function saveState() {
   if (!cy) return;
-  const state = { positions: {}, labels: {} };
+  const state = { positions: {}, labels: {}, edges: [], nodeDefs: [], deletedNodeIds: deletedNodeIds.slice(), deletedEdgeIds: deletedEdgeIds.slice() };
   cy.nodes().forEach(n => {
     state.positions[n.id()] = n.position();
     state.labels[n.id()] = n.data('label') || '';
+    state.nodeDefs.push({
+      id: n.id(),
+      label: n.data('label') || '',
+      cls: n.data('cls') || '',
+      parent: n.data('parent') || null,
+      classes: n.classes() || ''
+    });
+  });
+  cy.edges().forEach(e => {
+    var ed = {
+      id: e.id(), source: e.data('source'), target: e.data('target'),
+      label: e.data('label') || '', type: e.data('type') || 'solid'
+    };
+    if (e.data('bidirectional')) ed.bidirectional = true;
+    state.edges.push(ed);
   });
   try {
     localStorage.setItem(storageKey(currentDiagram), JSON.stringify(state));
@@ -826,23 +876,102 @@ function initCy(container, elements, isLR) {
     maxZoom: 4,
   });
 
-  // Apply saved state (positions + labels)
+  // Apply saved state (positions + labels + edges + node CRUD)
   const saved = loadState(currentDiagram);
   if (saved) {
+    // Restore deleted-node/edge tracking
+    deletedNodeIds = saved.deletedNodeIds || [];
+    deletedEdgeIds = saved.deletedEdgeIds || [];
+
     cy.ready(() => {
-      cy.nodes().forEach(n => {
+      // Build set of saved node IDs for add/delete tracking
+      var savedNodeIds = {};
+      if (saved.nodeDefs) {
+        saved.nodeDefs.forEach(function(nd) { savedNodeIds[nd.id] = nd; });
+      }
+
+      // Remove nodes explicitly deleted by user (tracked in deletedNodeIds)
+      if (deletedNodeIds.length > 0) {
+        deletedNodeIds.forEach(function(id) {
+          var n = cy.getElementById(id);
+          if (n.length) n.remove();
+        });
+      }
+
+      // Add nodes created by user (exist in saved state but not in cy)
+      var existingIds = {};
+      cy.nodes().forEach(function(n) { existingIds[n.id()] = true; });
+      if (saved.nodeDefs) {
+        saved.nodeDefs.forEach(function(nd) {
+          if (!existingIds[nd.id] && !deletedNodeIds.includes(nd.id)) {
+            cy.add({
+              group: 'nodes',
+              data: { id: nd.id, label: nd.label, cls: nd.cls || '', parent: nd.parent || undefined },
+              classes: nd.classes || (nd.cls === '__subgraph' ? 'subgraph' : '')
+            });
+          }
+        });
+      }
+
+      // Apply positions and labels
+      cy.nodes().forEach(function(n) {
         if (saved.positions && saved.positions[n.id()]) n.position(saved.positions[n.id()]);
         if (saved.labels && saved.labels[n.id()]) n.data('label', saved.labels[n.id()]);
       });
+
+      // Merge edges: remove deleted, add saved, then add new parsed edges not in saved
+      if (deletedEdgeIds.length > 0) {
+        deletedEdgeIds.forEach(function(id) {
+          var e = cy.getElementById(id);
+          if (e.length) e.remove();
+        });
+      }
+      if (saved.edges && saved.edges.length > 0) {
+        // Remove edges NOT in saved state (but keep new parsed edges)
+        var savedEdgeIds = {};
+        saved.edges.forEach(function(ed) { savedEdgeIds[ed.id] = true; });
+        cy.edges().forEach(function(e) {
+          if (!savedEdgeIds[e.id()] && !deletedEdgeIds.includes(e.id())) {
+            // Edge was parsed fresh but not in saved state — could be a new source edge.
+            // Keep it if it came from the current parse (currentParsed).
+            var fromParse = currentParsed && currentParsed.edges.some(function(pe) { return pe.data.id === e.id(); });
+            if (!fromParse) e.remove();
+          }
+        });
+        // Add/update edges from saved state (skip deleted)
+        saved.edges.forEach(function(ed) {
+          if (deletedEdgeIds.includes(ed.id)) return;
+          var existing = cy.getElementById(ed.id);
+          if (existing.length) {
+            existing.data('type', ed.type || 'solid');
+            existing.data('label', ed.label || '');
+            if (ed.bidirectional) existing.data('bidirectional', true);
+            else existing.removeData('bidirectional');
+          } else {
+            cy.add({ group: 'edges', data: ed });
+          }
+        });
+      }
+
+      // Update grab state for edit mode
+      updateNodeGrab();
     });
+  } else {
+    deletedNodeIds = [];
+    deletedEdgeIds = [];
   }
 
   // Events
   cy.on('dragfree', 'node', saveState);
   cy.on('dblclick', 'node', onNodeDblClick);
+  cy.on('dblclick', 'edge', (evt) => { showEdgePanel(evt.target); });
+  cy.on('tap', 'edge', (evt) => { if (isEditMode) showEdgePanel(evt.target); });
   cy.on('zoom', updateZoomLabel);
   cy.on('tap', (e) => {
-    if (e.target === cy && textEditEl) finishTextEdit();
+    if (e.target === cy) {
+      if (textEditEl) finishTextEdit();
+      if (edgePanelEl) hideEdgePanel();
+    }
   });
 
   updateNodeGrab();
@@ -909,6 +1038,261 @@ function finishTextEdit() {
   }
 }
 
+
+/* ═════════════════════════════════════════════
+   EDGE EDITING
+   ═════════════════════════════════════════════ */
+let edgePanelEl = null;
+let currentEdge = null;
+
+function escHtml(s) { return (s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;'); }
+
+function hideEdgePanel() {
+  if (edgePanelEl) { edgePanelEl.remove(); edgePanelEl = null; currentEdge = null; }
+}
+
+function showEdgePanel(edge) {
+  hideEdgePanel();
+  if (textEditEl) finishTextEdit();
+  currentEdge = edge;
+
+  const src = edge.data('source');
+  const tgt = edge.data('target');
+  const label = edge.data('label') || '';
+  const type = edge.data('type') || 'solid';
+
+  const mid = edge.midpoint();
+  const pan = cy.pan();
+  const zoom = cy.zoom();
+  const cyEl = document.getElementById('cy');
+  const rect = cyEl.getBoundingClientRect();
+  const x = rect.left + mid.x * zoom + pan.x * zoom;
+  const y = rect.top + mid.y * zoom + pan.y * zoom;
+
+  var isBidir = !!edge.data('bidirectional');
+
+  edgePanelEl = document.createElement('div');
+  edgePanelEl.className = 'edge-panel';
+  edgePanelEl.innerHTML =
+    '<div class="edge-panel-title">编辑连线</div>' +
+    '<div class="edge-panel-row"><b>' + escHtml(src) + '</b> → <b>' + escHtml(tgt) + '</b></div>' +
+    '<select class="edge-panel-type">' +
+      '<option value="solid"' + (type==='solid'?' selected':'') + '>实线</option>' +
+      '<option value="thick"' + (type==='thick'?' selected':'') + '>粗线</option>' +
+      '<option value="dashed"' + (type==='dashed'?' selected':'') + '>虚线</option>' +
+    '</select>' +
+    '<label class="edge-panel-check"><input type="checkbox" class="edge-panel-bidir"' + (isBidir?' checked':'') + '> 双向箭头</label>' +
+    '<input class="edge-panel-label" placeholder="标签文字" value="' + escHtml(label) + '"/>' +
+    '<div class="edge-panel-btns">' +
+      '<button class="edge-panel-save">💾 保存</button>' +
+      '<button class="edge-panel-delete">🗑️ 删除</button>' +
+      '<button class="edge-panel-cancel">取消</button>' +
+    '</div>';
+
+  edgePanelEl.style.left = Math.max(10, Math.min(x, window.innerWidth - 260)) + 'px';
+  edgePanelEl.style.top = Math.max(10, y - 120) + 'px';
+
+  document.body.appendChild(edgePanelEl);
+
+  edgePanelEl.querySelector('.edge-panel-save').onclick = function() {
+    var newType = edgePanelEl.querySelector('.edge-panel-type').value;
+    var newBidir = edgePanelEl.querySelector('.edge-panel-bidir').checked;
+    var newLabel = edgePanelEl.querySelector('.edge-panel-label').value.trim();
+    edge.data('type', newType);
+    edge.data('label', newLabel);
+    if (newBidir) edge.data('bidirectional', true);
+    else edge.removeData('bidirectional');
+    saveState();
+    hideEdgePanel();
+    toast('✅ 连线已更新');
+  };
+
+  edgePanelEl.querySelector('.edge-panel-delete').onclick = function() {
+    if (confirm('确定删除连线 ' + src + ' → ' + tgt + '？')) {
+      deletedEdgeIds.push(currentEdge.id());
+      currentEdge.remove();
+      saveState();
+      hideEdgePanel();
+      toast('🗑️ 连线已删除');
+    }
+  };
+
+  edgePanelEl.querySelector('.edge-panel-cancel').onclick = hideEdgePanel;
+}
+
+function showAddEdgePanel() {
+  hideEdgePanel();
+  if (textEditEl) finishTextEdit();
+
+  var nodeIds = cy.nodes().map(function(n) { return n.id(); }).sort();
+  var opts = nodeIds.map(function(id) {
+    var node = cy.getElementById(id);
+    var label = (node.data('label') || '');
+    var shortLabel = label.replace(/<br\/?>/g,' ').replace(/\n/g,' ').substring(0, 36);
+    if (shortLabel.length < label.replace(/<br\/?>/g,' ').replace(/\n/g,' ').length) shortLabel += '…';
+    return '<option value="' + id + '">' + escHtml(id) + ' — ' + escHtml(shortLabel) + '</option>';
+  }).join('');
+
+  edgePanelEl = document.createElement('div');
+  edgePanelEl.className = 'edge-panel';
+  edgePanelEl.innerHTML =
+    '<div class="edge-panel-title">新增连线</div>' +
+    '<select class="edge-panel-src">' + opts + '</select>' +
+    '<div style="text-align:center;padding:4px 0;color:#94a3b8;">↓</div>' +
+    '<select class="edge-panel-tgt">' + opts + '</select>' +
+    '<select class="edge-panel-type">' +
+      '<option value="solid">实线</option>' +
+      '<option value="thick">粗线</option>' +
+      '<option value="dashed">虚线</option>' +
+    '</select>' +
+    '<label class="edge-panel-check"><input type="checkbox" class="edge-panel-bidir"> 双向箭头</label>' +
+    '<input class="edge-panel-label" placeholder="标签文字（可选）"/>' +
+    '<div class="edge-panel-btns">' +
+      '<button class="edge-panel-add">➕ 添加</button>' +
+      '<button class="edge-panel-cancel">取消</button>' +
+    '</div>';
+
+  edgePanelEl.style.left = '50%';
+  edgePanelEl.style.top = '120px';
+  edgePanelEl.style.transform = 'translateX(-50%)';
+
+  document.body.appendChild(edgePanelEl);
+
+  edgePanelEl.querySelector('.edge-panel-add').onclick = function() {
+    var src = edgePanelEl.querySelector('.edge-panel-src').value;
+    var tgt = edgePanelEl.querySelector('.edge-panel-tgt').value;
+    var type = edgePanelEl.querySelector('.edge-panel-type').value;
+    var bidir = edgePanelEl.querySelector('.edge-panel-bidir').checked;
+    var label = edgePanelEl.querySelector('.edge-panel-label').value.trim();
+
+    if (src === tgt) { toast('⚠️ 源和目标不能相同'); return; }
+    var exists = cy.edges().some(function(e) { return e.data('source') === src && e.data('target') === tgt; });
+    if (exists) { toast('⚠️ 该连线已存在'); return; }
+
+    var data = {
+      id: src + '_' + tgt + '_' + Date.now(),
+      source: src, target: tgt, label: label, type: type
+    };
+    if (bidir) data.bidirectional = true;
+    cy.add({ group: 'edges', data: data });
+    saveState();
+    hideEdgePanel();
+    toast('✅ 连线已添加');
+  };
+
+  edgePanelEl.querySelector('.edge-panel-cancel').onclick = hideEdgePanel;
+}
+
+function showAddNodePanel() {
+  hideEdgePanel();
+  if (textEditEl) finishTextEdit();
+
+  // Collect available parent subgraphs
+  var subgraphIds = cy.nodes().filter(function(n) { return n.hasClass('subgraph'); }).map(function(n) { return n.id(); }).sort();
+  var parentOpts = '<option value="">— 无（顶层节点）—</option>' +
+    subgraphIds.map(function(id) {
+      var node = cy.getElementById(id);
+      var label = (node.data('label') || id).replace(/\n/g,' ').substring(0, 50);
+      return '<option value="' + id + '">' + escHtml(id) + ' — ' + escHtml(label) + '</option>';
+    }).join('');
+
+  var styleOpts = [
+    { v: '', t: '默认（白底黑字）' },
+    { v: 'erp', t: 'ERP核心（深蓝·金边）' },
+    { v: 'srm', t: 'SRM供应商（红色）' },
+    { v: 'crm', t: 'CRM客户（深绿）' },
+    { v: 'wms', t: 'WMS仓储（深橙）' },
+    { v: 'mes', t: 'MES制造（琥珀）' },
+    { v: 'qms', t: 'QMS质量（绿色）' },
+    { v: 'lims', t: 'LIMS检验（青色）' },
+    { v: 'supp', t: '支撑保障（紫色）' },
+    { v: 'ext', t: '外部系统（深灰·虚线）' },
+    { v: 'erpCore', t: 'ERP核心枢纽（深蓝·金边·粗框）' },
+    { v: 'srmBlock', t: 'SRM模块（红）' },
+    { v: 'crmBlock', t: 'CRM模块（青绿）' },
+    { v: 'momBlock', t: 'MOM模块（橙）' },
+    { v: 'wmsNode', t: 'WMS节点（深红）' },
+    { v: 'mesNode', t: 'MES节点（琥珀·深字）' },
+    { v: 'qmsNode', t: 'QMS节点（深绿）' },
+    { v: 'suppNode', t: '支撑节点（紫）' },
+    { v: 'extNode', t: '外部节点（灰·虚线）' },
+    { v: 'core', t: '核心（深蓝·金边）' },
+    { v: 'check', t: '校验节点（绿）' },
+    { v: 'scada', t: 'SCADA（灰·虚线）' },
+    { v: 'tms', t: 'TMS运输（灰）' },
+    { v: 'trace', t: '追溯（深紫）' },
+    { v: 'env', t: '环境监控（青）' },
+    { v: 'hr', t: 'HR人员（金）' },
+    { v: 'val', t: '验证（深紫）' },
+    { v: 'eam', t: 'EAM设备（紫）' },
+    { v: 'ems', t: 'EMS环境（青）' },
+    { v: 'data', t: '数据资产（橙·深字）' },
+  ].map(function(s) {
+    return '<option value="' + s.v + '">' + s.t + '</option>';
+  }).join('');
+
+  edgePanelEl = document.createElement('div');
+  edgePanelEl.className = 'edge-panel';
+  edgePanelEl.innerHTML =
+    '<div class="edge-panel-title">新增实体（节点）</div>' +
+    '<input class="edge-panel-label" id="newNodeId" placeholder="节点ID（英文·数字·下划线，如 MY_NODE）" style="font-family:monospace;font-size:.75rem"/>' +
+    '<textarea class="edge-panel-label" id="newNodeLabel" placeholder="标签文字（换行=Shift+Enter，或使用 &lt;br/&gt;）" rows="4" style="resize:vertical;min-height:70px;font-family:inherit"></textarea>' +
+    '<div class="edge-panel-row" style="font-size:.72rem;color:#94a3b8;">选择父容器（可选）</div>' +
+    '<select class="edge-panel-type" id="newNodeParent">' + parentOpts + '</select>' +
+    '<div class="edge-panel-row" style="font-size:.72rem;color:#94a3b8;">选择视觉样式</div>' +
+    '<select class="edge-panel-type" id="newNodeCls">' + styleOpts + '</select>' +
+    '<div class="edge-panel-btns">' +
+      '<button class="edge-panel-add">➕ 添加实体</button>' +
+      '<button class="edge-panel-cancel">取消</button>' +
+    '</div>';
+
+  edgePanelEl.style.left = '50%';
+  edgePanelEl.style.top = '120px';
+  edgePanelEl.style.transform = 'translateX(-50%)';
+
+  document.body.appendChild(edgePanelEl);
+
+  edgePanelEl.querySelector('.edge-panel-add').onclick = function() {
+    var nid = edgePanelEl.querySelector('#newNodeId').value.trim();
+    var nlabel = edgePanelEl.querySelector('#newNodeLabel').value.trim();
+    var nparent = edgePanelEl.querySelector('#newNodeParent').value;
+    var ncls = edgePanelEl.querySelector('#newNodeCls').value;
+
+    if (!nid) { toast('⚠️ 请输入节点ID'); return; }
+    if (!/^[a-zA-Z_][\w]*$/.test(nid)) { toast('⚠️ 节点ID只能包含英文、数字、下划线，且以英文或下划线开头'); return; }
+    if (!nlabel) { toast('⚠️ 请输入标签文字'); return; }
+    if (cy.getElementById(nid).length) { toast('⚠️ 该节点ID已存在'); return; }
+
+    nlabel = nlabel.replace(/\n/g, '<br/>');
+
+    cy.add({
+      group: 'nodes',
+      data: { id: nid, label: nlabel, cls: ncls, parent: nparent || undefined },
+      classes: ncls === '__subgraph' ? 'subgraph' : ''
+    });
+
+    if (isEditMode) {
+      cy.nodes().forEach(function(n) {
+        if (n.hasClass('subgraph')) n.grabbable(false);
+        else n.grabbable(true);
+      });
+    }
+
+    saveState();
+    hideEdgePanel();
+    toast('✅ 实体 ' + nid + ' 已添加');
+  };
+
+  edgePanelEl.querySelector('.edge-panel-cancel').onclick = hideEdgePanel;
+
+  // Focus the ID input
+  setTimeout(function() {
+    var idInput = edgePanelEl.querySelector('#newNodeId');
+    if (idInput) idInput.focus();
+  }, 100);
+}
+
+
 /* ═════════════════════════════════════════════
    UI
    ═════════════════════════════════════════════ */
@@ -937,6 +1321,7 @@ async function switchDiagram(btn) {
   if (newId === currentDiagram && btn.classList.contains('active')) return;
 
   if (textEditEl) finishTextEdit();
+  if (edgePanelEl) hideEdgePanel();
   saveState();
 
   document.querySelectorAll('.sidebar .tab').forEach(t => t.classList.remove('active'));
@@ -948,16 +1333,23 @@ async function switchDiagram(btn) {
 
 function toggleEdit() {
   if (textEditEl) finishTextEdit();
+  if (edgePanelEl) hideEdgePanel();
   isEditMode = !isEditMode;
   const btn = document.getElementById('btnEdit');
+  const addEdgeBtn = document.getElementById('btnAddEdge');
+  const addNodeBtn = document.getElementById('btnAddNode');
 
   if (isEditMode) {
     btn.textContent = '👁️ 预览模式';
     btn.style.background = 'var(--success)';
-    toast('✏️ 编辑模式：拖拽移动节点，双击编辑文字');
+    addEdgeBtn.style.display = 'inline-block';
+    addNodeBtn.style.display = 'inline-block';
+    toast('✏️ 编辑模式：拖拽移动节点，双击编辑文字/连线，Delete删除选中，新增实体/连线');
   } else {
     btn.textContent = '✏️ 编辑模式';
     btn.style.background = 'var(--btn-bg)';
+    addEdgeBtn.style.display = 'none';
+    addNodeBtn.style.display = 'none';
     saveState();
     toast('👁️ 预览模式');
   }
@@ -1078,7 +1470,33 @@ document.addEventListener('keydown', (e) => {
   if (e.ctrlKey && e.key === 'e') { e.preventDefault(); toggleEdit(); }
   if (e.ctrlKey && e.key === 's') { e.preventDefault(); downloadDrawio(); }
   if (e.ctrlKey && e.key === '0') { e.preventDefault(); zoomCy('fit'); }
-  if (e.key === 'Escape' && isEditMode) { e.preventDefault(); toggleEdit(); }
+  if (e.key === 'Escape') { e.preventDefault(); if (edgePanelEl) hideEdgePanel(); else if (isEditMode) toggleEdit(); }
+  if ((e.key === 'Delete' || e.key === 'Backspace') && isEditMode && cy && !textEditEl && !edgePanelEl) {
+    var tag = document.activeElement ? document.activeElement.tagName : '';
+    var isInput = tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT' || (document.activeElement && document.activeElement.isContentEditable);
+    if (isInput) return;
+    const sel = cy.$(':selected');
+    if (sel.length > 0) {
+      e.preventDefault();
+      if (sel.isEdge()) {
+        const desc = '连线 ' + sel.data('source') + ' → ' + sel.data('target');
+        if (confirm('确定删除 ' + desc + '？')) {
+          deletedEdgeIds.push(sel.id());
+          sel.remove();
+          saveState();
+          toast('🗑️ ' + desc + ' 已删除');
+        }
+      } else {
+        const desc = '节点 ' + sel.id();
+        if (confirm('确定删除 ' + desc + '？（关联连线将一并删除）')) {
+          deletedNodeIds.push(sel.id());
+          sel.remove();
+          saveState();
+          toast('🗑️ ' + desc + ' 已删除');
+        }
+      }
+    }
+  }
 });
 
 /* ═════════════════════════════════════════════
