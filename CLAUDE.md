@@ -4,11 +4,11 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Repository overview
 
-This is a **documentation/design-only workspace** containing a single enterprise IT architecture design document for 花红药业 (Huahong Pharmaceutical). There is no build system, test suite, or runtime — it's a standalone HTML file viewed directly in a browser.
+This is a **documentation/design-only workspace** containing a single enterprise IT architecture design document for  (Huahong Pharmaceutical). There is no build system, test suite, or runtime — it's a standalone HTML file viewed directly in a browser.
 
 ## Key file
 
-- `花红药业V3-企业信息化顶层架构设计-ERPCRMSRMMOM.html` — self-contained HTML app that renders Mermaid.js flowcharts for the enterprise architecture.
+- `V3-企业信息化顶层架构设计-ERPCRMSRMMOM.html` — self-contained HTML app that renders Mermaid.js flowcharts for the enterprise architecture.
 
 ## How to view
 

@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>花红药业 — 企业信息化顶层架构设计 | 可视化编辑版</title>
+<title> — 企业信息化顶层架构设计 | 可视化编辑版</title>
 <script>
 // Dynamic Mermaid loader with CDN fallback
 (function loadMermaid() {
@@ -150,7 +150,7 @@
 
 <div class="header">
   <div>
-    <div class="title">花红药业 — <span>企业信息化顶层架构设计</span></div>
+    <div class="title"> — <span>企业信息化顶层架构设计</span></div>
     <div style="font-size:.73rem;color:#94a3b8;margin-top:3px">ERP核心枢纽 · CRM客户关系 · SRM供应商关系 · MOM制造运营 | 拖拽编辑 · 双击改文字</div>
   </div>
   <div class="actions">
@@ -217,7 +217,7 @@
    ═══════════════════════════════════════════════════ */
 const diagramSources = {
   d0: `flowchart LR
-    subgraph MAIN["花红药业 — 企业信息化顶层架构"]
+    subgraph MAIN[" — 企业信息化顶层架构"]
         direction TB
         subgraph SRM["🔗 SRM 供应商关系管理 — 计划与采购管理链路"]
             direction LR
@@ -1196,7 +1196,7 @@ async function downloadDrawio() {
   const url = URL.createObjectURL(blob);
   const a = document.createElement('a');
   a.href = url;
-  a.download = `花红药业架构图_${currentDiagram}.drawio`;
+  a.download = `架构图_${currentDiagram}.drawio`;
   a.click();
   URL.revokeObjectURL(url);
   toast('✅ .drawio 文件已下载（可用桌面端 Draw.io 打开编辑）');
@@ -1257,7 +1257,7 @@ async function downloadSVG() {
   const url = URL.createObjectURL(blob);
   const a = document.createElement('a');
   a.href = url;
-  a.download = `花红药业架构图_${currentDiagram}.svg`;
+  a.download = `架构图_${currentDiagram}.svg`;
   a.click();
   URL.revokeObjectURL(url);
   toast('✅ SVG 已下载');

@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>花红药业 — 企业信息化顶层架构设计 | ERP+CRM+SRM+MOM</title>
+<title> — 企业信息化顶层架构设计 | ERP+CRM+SRM+MOM</title>
 <script src="https://cdn.jsdelivr.net/npm/mermaid@10/dist/mermaid.min.js">
 </script>
 <style>
@@ -145,7 +145,7 @@
 
 <div class="header">
   <div>
-    <div class="title">花红药业 — <span>企业信息化顶层架构设计</span></div>
+    <div class="title"> — <span>企业信息化顶层架构设计</span></div>
     <div style="font-size:.73rem;color:#94a3b8;margin-top:3px">ERP核心枢纽 · CRM客户关系 · SRM供应商关系 · MOM制造运营 | GMP合规</div>
   </div>
   <div class="actions">
@@ -252,7 +252,7 @@ const diagramSources = {
   /* ───── d0: 总体架构全景图 — ERP中心·三角环绕·图例右上 ───── */
   d0: `flowchart LR
 
-    subgraph MAIN["花红药业 — 企业信息化顶层架构"]
+    subgraph MAIN[" — 企业信息化顶层架构"]
         direction TB
 
         subgraph SRM["🔗 SRM 供应商关系管理 — 计划与采购管理链路"]
@@ -934,7 +934,7 @@ function downloadSVG(){
   const url=URL.createObjectURL(blob);
   const a=document.createElement('a');
   a.href=url;
-  a.download=`花红药业架构图_${currentDiagram}.svg`;
+  a.download=`架构图_${currentDiagram}.svg`;
   a.click();
   URL.revokeObjectURL(url);
 }
@@ -945,7 +945,7 @@ function downloadMermaid(){
   const url=URL.createObjectURL(blob);
   const a=document.createElement('a');
   a.href=url;
-  a.download=`花红药业架构图_${currentDiagram}.mmd`;
+  a.download=`架构图_${currentDiagram}.mmd`;
   a.click();
   URL.revokeObjectURL(url);
 }
