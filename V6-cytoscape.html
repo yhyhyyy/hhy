@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title> — 企业信息化顶层架构设计 | Cytoscape 可视化编辑</title>
+<title>企业信息化顶层架构设计 | Cytoscape 可视化编辑</title>
 <script>
 // Sequential library loader
 (function loadLibs() {
@@ -164,7 +164,7 @@
 
 <div class="header">
   <div>
-    <div class="title"> — <span>企业信息化顶层架构设计</span></div>
+    <div class="title"><span>企业信息化顶层架构设计</span></div>
     <div style="font-size:.73rem;color:#94a3b8;margin-top:3px">ERP核心枢纽 · CRM客户关系 · SRM供应商关系 · MOM制造运营 | 拖拽编辑 · 双击改文字</div>
   </div>
   <div class="actions">
@@ -231,7 +231,7 @@
    ═════════════════════════════════════════════ */
 const diagramSources = {
   d0: `flowchart LR
-    subgraph MAIN[" — 企业信息化顶层架构"]
+    subgraph MAIN["企业信息化顶层架构"]
         direction TB
         subgraph SRM["🔗 SRM 供应商关系管理 — 计划与采购管理链路"]
             direction LR
@@ -241,7 +241,7 @@ const diagramSources = {
             SRM4["④ 到货接收初验<br/>PO·送货单·COA<br/>→ 到货单·初验记录"]
             SRM1 --> SRM2 --> SRM3 --> SRM4
         end
-        ERP["🏭 ERP 企业资源计划系统<br/>━━━━━━━━━━━━━━━━━━━━<br/>📊 财务总账 · 💰 成本核算 · 🧾 应收应付<br/>📋 主数据管理MDM · 🗓️ 生产计划排产MPS/MRP<br/>📦 库存管理 · 👥 人力资源管理<br/>📈 商业智能BI · 📑 文档管理DMS<br/>━━━━━━━━━━━━━━━━━━━━<br/>⬤ 企业资源计划核心枢纽 ⬤"]
+        ERP["🏭 ERP 企业资源计划系统<br/>📊 财务总账 · 💰 成本核算 · 🧾 应收应付<br/>📋 主数据管理MDM · 🗓️ 生产计划排产MPS/MRP<br/>📦 库存管理 · 👥 人力资源管理<br/>📈 商业智能BI · 📑 文档管理DMS<br/>⬤ 企业资源计划核心枢纽 ⬤"]
         subgraph CRM["🤝 CRM 客户关系管理 — 销售物流追溯链路"]
             direction LR
             CRM1["① 销售订单发货计划<br/>经销商订单·成品放行<br/>→ 发货单·出库指令"]
